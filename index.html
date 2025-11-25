@@ -857,24 +857,44 @@
             );
         };
 
-        const ImportExport = ({ setWords, words, setView, config }) => {
+       const ImportExport = ({ setWords, words, setView, config }) => {
             const [activeTab, setActiveTab] = useState('text');
             const [textInput, setTextInput] = useState('');
             const [importMode, setImportMode] = useState('frequency');
             const [importCategory, setImportCategory] = useState('high');
             const [customGroupName, setCustomGroupName] = useState('');
             const [isNewBatch, setIsNewBatch] = useState(false);
+            // 新增：导入时的批次命名
+            const [importBatchName, setImportBatchName] = useState(''); 
+            
             const [aiInput, setAiInput] = useState('');
             const [isFetching, setIsFetching] = useState(false);
             const [fetchProgress, setFetchProgress] = useState({ current: 0, total: 0, success: 0, fail: 0 });
             const [fetchLogs, setFetchLogs] = useState([]);
 
             const getTargetCategory = () => { if (importMode === 'frequency') return importCategory; return customGroupName.trim() || `Import ${new Date().toLocaleDateString()}`; };
+            
+            // 新增：保存批次信息的辅助函数
+            const saveBatchMeta = (batchId) => {
+                if (isNewBatch && importBatchName.trim()) {
+                    try {
+                        const metaStr = localStorage.getItem('kaoyan_group_meta');
+                        const meta = metaStr ? JSON.parse(metaStr) : {};
+                        meta[batchId] = { name: importBatchName.trim(), desc: "" };
+                        localStorage.setItem('kaoyan_group_meta', JSON.stringify(meta));
+                    } catch (e) { console.error(e); }
+                }
+            };
+
             const parseAndImport = () => { 
                 if(!textInput.trim()) return;
                 const targetCat = getTargetCategory(); const segments = textInput.split(/[;\n]+/);
                 let addedCount = 0, mergedCount = 0; let currentWords = JSON.parse(JSON.stringify(words)); let lastWordId = null; 
                 const batchId = isNewBatch ? `batch-${Date.now()}` : 'default';
+                
+                // 保存批次名称
+                saveBatchMeta(batchId);
+
                 segments.forEach((seg, idx) => {
                     seg = seg.trim(); if (!seg) return;
                     const fullWordMatch = seg.match(/^([a-zA-Z\-\s]+?)\s+([a-z]{1,5}\.)\s*(.+)$/); const posMatch = seg.match(/^([a-z]{1,5}\.)\s*(.+)$/);
@@ -885,11 +905,18 @@
                         else { const newId = `auto-${Date.now()}-${idx}-${Math.random().toString(36).substr(2,5)}`; const newWord = { id: newId, word: rawWord, phonetic: "", category: targetCat, importId: batchId, meanings: [{ pos, def, sentence: "", isMastered: false }], stats: { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 } }; currentWords.push(newWord); lastWordId = newId; addedCount++; }
                     } else if (posMatch && lastWordId) { const pos = posMatch[1].trim(); const def = posMatch[2].trim(); const targetWord = currentWords.find(w => w.id === lastWordId); if (targetWord && !targetWord.meanings.some(m => m.pos === pos && m.def === def)) { targetWord.meanings.push({ pos, def, sentence: "", isMastered: false }); mergedCount++; } }
                 });
-                if (addedCount > 0 || mergedCount > 0) { setWords(currentWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords)); alert(`成功！新增${addedCount}, 合并${mergedCount}`); setTextInput(''); } else alert("格式错误");
+                if (addedCount > 0 || mergedCount > 0) { setWords(currentWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords)); alert(`成功！新增${addedCount}, 合并${mergedCount}`); setTextInput(''); setImportBatchName(''); } else alert("格式错误");
             };
+
             const fetchWordsFromAI = async () => {
                 if (!config.apiKey) { alert("请配置 Key"); return; } if (!aiInput.trim()) return; const wordList = aiInput.split(/[\s,\n]+/).filter(w => w.trim().match(/^[a-zA-Z\-]+$/)); if(wordList.length===0) return;
-                setIsFetching(true); setFetchProgress({ current: 0, total: wordList.length, success: 0, fail: 0 }); setFetchLogs([]); const targetCat = getTargetCategory(); const batchId = isNewBatch ? `batch-${Date.now()}` : 'default'; const BATCH_SIZE = 5; let currentWords = JSON.parse(JSON.stringify(words)); let successCount = 0; let failCount = 0;
+                setIsFetching(true); setFetchProgress({ current: 0, total: wordList.length, success: 0, fail: 0 }); setFetchLogs([]); const targetCat = getTargetCategory(); 
+                
+                const batchId = isNewBatch ? `batch-${Date.now()}` : 'default';
+                // 保存批次名称
+                saveBatchMeta(batchId);
+
+                const BATCH_SIZE = 5; let currentWords = JSON.parse(JSON.stringify(words)); let successCount = 0; let failCount = 0;
                 for (let i = 0; i < wordList.length; i += BATCH_SIZE) {
                     const batch = wordList.slice(i, i + BATCH_SIZE); const batchStr = batch.join(", "); const prompt = `考研单词查询JSON:[${batchStr}]`;
                     try {
@@ -898,7 +925,7 @@
                         if(Array.isArray(parsedBatch)){ parsedBatch.forEach(item=>{ const existIdx=currentWords.findIndex(w=>w.word.toLowerCase()===item.word.toLowerCase()); const meanings=item.meanings.map(m=>({...m,sentence:"",isMastered:false})); if(!isNewBatch && existIdx!==-1){ item.meanings.forEach(nm=>{ if(!currentWords[existIdx].meanings.some(om=>om.pos===nm.pos && om.def===nm.def)) currentWords[existIdx].meanings.push({...nm,sentence:"",isMastered:false}); }); }else{ currentWords.push({id:`ai-${Date.now()}-${Math.random()}`,word:item.word,phonetic:item.phonetic||"",category:targetCat,importId:batchId,meanings,stats:{interval:0,easeFactor:2.5,nextReview:0,reviewCount:0}}); } }); successCount+=batch.length; setFetchLogs(p=>[`✅ ${batchStr}`,...p]); }
                     } catch(err){ failCount+=batch.length; setFetchLogs(p=>[`❌ ${batchStr}`,...p]); }
                     setFetchProgress({ current: Math.min(i+BATCH_SIZE, wordList.length), total: wordList.length, success: successCount, fail: failCount }); setWords([...currentWords]); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords));
-                } setIsFetching(false); alert("完成");
+                } setIsFetching(false); alert("完成"); setImportBatchName('');
             };
             const handleFile = (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { try { const parsed = JSON.parse(ev.target.result); if (Array.isArray(parsed)) { if(confirm("覆盖?")) { setWords(parsed); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(parsed)); } } } catch(err) { alert("格式错误"); } }; reader.readAsText(file); };
             const exportData = () => { const blob = new Blob([JSON.stringify(words, null, 2)], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = "backup.json"; a.click(); };
@@ -918,6 +945,14 @@
                                 </div>
                                 {importMode==='frequency' ? (<div className="grid grid-cols-4 gap-2 mb-4">{['high','medium','low','zero'].map(cat=>(<button key={cat} onClick={()=>setImportCategory(cat)} className={`py-2 text-sm rounded-lg border transition-all ${importCategory===cat?'bg-indigo-600 text-white border-indigo-600 shadow-sm':'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>{cat}</button>))}</div>) : (<div className="mb-4"><input type="text" value={customGroupName} onChange={e=>setCustomGroupName(e.target.value)} placeholder="输入分组名称 (例如: 2025预测)" className="w-full p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"/></div>)}
                                 <label className="flex items-center pt-4 border-t border-gray-200 cursor-pointer"><input type="checkbox" checked={isNewBatch} onChange={e=>setIsNewBatch(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"/><span className="ml-2 text-sm font-bold text-gray-700">独立为新批次 (不合并到旧数据)</span></label>
+                                
+                                {/* 核心修改：当勾选“新批次”时，显示命名输入框 */}
+                                {isNewBatch && (
+                                    <div className="mt-4 animate-fade-in">
+                                        <label className="block text-xs font-bold text-indigo-500 mb-1">批次命名 (可选)</label>
+                                        <input type="text" value={importBatchName} onChange={e=>setImportBatchName(e.target.value)} placeholder="例如: 2015真题阅读PartA" className="w-full p-3 border border-indigo-200 bg-indigo-50 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"/>
+                                    </div>
+                                )}
                             </div>
                         )}
 
