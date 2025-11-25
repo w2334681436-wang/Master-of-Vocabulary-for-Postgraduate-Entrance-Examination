@@ -77,6 +77,7 @@
             Folder: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>,
             FolderInput: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 2H4a2 2 0 0 0-2 2Z"/><path d="m10 13 2 2 4-4"/></svg>,
             Move: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3"/></svg>
+            Edit: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
         };
 
         const Icon = ({ name, size = 20, className = "" }) => {
@@ -294,7 +295,18 @@
 
         const GroupList = ({ words, setWords, category, setView, setSessionConfig, config }) => {
             const [moveModal, setMoveModal] = useState({ open: false, targetGroupWords: [] });
+            const [editModal, setEditModal] = useState({ open: false, batchId: '', currentName: '', currentDesc: '' });
             const [customTarget, setCustomTarget] = useState('');
+            // 新增：用于存储分组备注和自定义名称的状态
+            const [groupMeta, setGroupMeta] = useState({});
+
+            // 初始化加载分组信息
+            useEffect(() => {
+                try {
+                    const savedMeta = localStorage.getItem('kaoyan_group_meta');
+                    if (savedMeta) setGroupMeta(JSON.parse(savedMeta));
+                } catch (e) { console.error("加载分组信息失败", e); }
+            }, []);
 
             const groups = useMemo(() => {
                 const catWords = words.filter(w => (w.category || 'uncategorized') === category);
@@ -310,13 +322,42 @@
                         const start = i * groupSize; const end = Math.min((i+1) * groupSize, batchWords.length);
                         const groupWords = batchWords.slice(start, end);
                         const mastered = groupWords.filter(w => w.stats && w.stats.interval > 0).length;
-                        let batchName = "默认词库";
-                        if (batchId !== 'default') { const ts = parseInt(batchId.split('-')[1]); if (!isNaN(ts)) { const date = new Date(ts); batchName = `${date.getFullYear()}/${date.getMonth()+1}/${date.getDate()} 导入`; } else { batchName = "新批次"; } }
-                        result.push({ index: globalIndex++, batchId, batchIndex: i, batchName, start: start + 1, end, total: groupWords.length, mastered, words: groupWords });
+                        
+                        // 获取自定义名称和备注
+                        const meta = groupMeta[batchId] || {};
+                        let batchName = meta.name; // 优先使用自定义名称
+                        
+                        // 如果没有自定义名称，使用默认逻辑
+                        if (!batchName) {
+                            if (batchId !== 'default') { 
+                                const ts = parseInt(batchId.split('-')[1]); 
+                                if (!isNaN(ts)) { 
+                                    const date = new Date(ts); 
+                                    batchName = `${date.getFullYear()}/${date.getMonth()+1}/${date.getDate()} 导入`; 
+                                } else { 
+                                    batchName = "新批次"; 
+                                } 
+                            } else {
+                                batchName = "默认词库";
+                            }
+                        }
+
+                        result.push({ 
+                            index: globalIndex++, 
+                            batchId, 
+                            batchIndex: i, 
+                            batchName, 
+                            desc: meta.desc || "", // 备注
+                            start: start + 1, 
+                            end, 
+                            total: groupWords.length, 
+                            mastered, 
+                            words: groupWords 
+                        });
                     }
                 });
                 return result;
-            }, [words, category, config.groupSize]);
+            }, [words, category, config.groupSize, groupMeta]);
 
             const displayTitle = ({ high: "高频词", medium: "中频词", low: "低频词", zero: "零频词", uncategorized: "未分类" })[category] || category;
             const startGroup = (batchId, batchIndex) => { setSessionConfig({ type: 'group_study', category, batchId, batchIndex }); setView('study'); };
@@ -347,6 +388,33 @@
                 alert("转移成功！");
             };
 
+            // 打开编辑弹窗
+            const openEditModal = (e, batchId, currentName, currentDesc) => {
+                e.stopPropagation();
+                // 如果是默认名称，弹窗里显示为空，方便修改
+                const isDefaultName = currentName.includes("导入") || currentName === "默认词库" || currentName === "新批次";
+                setEditModal({ 
+                    open: true, 
+                    batchId, 
+                    currentName: isDefaultName ? '' : currentName, 
+                    currentDesc: currentDesc || ''
+                });
+            };
+
+            // 保存编辑信息
+            const saveGroupInfo = () => {
+                const newMeta = { 
+                    ...groupMeta, 
+                    [editModal.batchId]: { 
+                        name: editModal.currentName.trim(), 
+                        desc: editModal.currentDesc.trim() 
+                    } 
+                };
+                setGroupMeta(newMeta);
+                localStorage.setItem('kaoyan_group_meta', JSON.stringify(newMeta));
+                setEditModal({ open: false, batchId: '', currentName: '', currentDesc: '' });
+            };
+
             return (
                 <div className="flex-1 overflow-y-auto custom-scroll p-4 bg-gray-50 relative">
                     <div className="max-w-5xl mx-auto pb-20">
@@ -362,17 +430,30 @@
                         : 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                             {groups.map(g => (
-                                <div key={g.index} onClick={() => startGroup(g.batchId, g.batchIndex)} className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:border-indigo-300 hover:shadow-md transition duration-200 flex flex-col group relative overflow-hidden">
-                                    <div className="flex justify-between items-start mb-3">
-                                        <div>
-                                            <h3 className="font-bold text-gray-800 text-lg">Group {g.index}</h3>
-                                            <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200 mt-1 inline-block">{g.batchName}</span>
+                                <div key={g.index} onClick={() => startGroup(g.batchId, g.batchIndex)} className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:border-indigo-300 hover:shadow-md transition duration-200 flex flex-col group relative overflow-hidden min-h-[160px]">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="flex-1 pr-2">
+                                            <h3 className="font-bold text-gray-800 text-lg line-clamp-1" title={g.batchName}>{g.batchName}</h3>
+                                            <div className="flex items-center mt-1 space-x-2">
+                                                 <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200">Group {g.index}</span>
+                                            </div>
                                         </div>
-                                        <div className="flex space-x-1">
-                                            <button onClick={(e) => openMoveModal(e, g.words)} className="p-2 bg-blue-50 text-blue-500 rounded-lg hover:bg-blue-100 transition" title="转移分组"><Icon name="Move" size={18}/></button>
-                                            <button onClick={(e) => handleDeleteGroup(e, g.words)} className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100 transition" title="删除分组"><Icon name="Trash2" size={18}/></button>
+                                        <div className="flex space-x-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                            <button onClick={(e) => openEditModal(e, g.batchId, g.batchName, g.desc)} className="p-1.5 bg-gray-50 text-gray-600 rounded hover:bg-indigo-50 hover:text-indigo-600 transition" title="编辑信息"><Icon name="Edit" size={16}/></button>
+                                            <button onClick={(e) => openMoveModal(e, g.words)} className="p-1.5 bg-blue-50 text-blue-500 rounded hover:bg-blue-100 transition" title="转移分组"><Icon name="Move" size={16}/></button>
+                                            <button onClick={(e) => handleDeleteGroup(e, g.words)} className="p-1.5 bg-red-50 text-red-500 rounded hover:bg-red-100 transition" title="删除分组"><Icon name="Trash2" size={16}/></button>
                                         </div>
                                     </div>
+                                    
+                                    {/* 备注显示区域 */}
+                                    <div className="mb-3 flex-1">
+                                        {g.desc ? (
+                                            <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded border border-gray-100 line-clamp-2">{g.desc}</p>
+                                        ) : (
+                                            <p className="text-xs text-gray-300 italic py-2">暂无备注...</p>
+                                        )}
+                                    </div>
+
                                     <div className="mt-auto">
                                         <div className="flex justify-between text-xs text-gray-500 mb-1">
                                             <span>进度</span>
@@ -389,7 +470,7 @@
                         }
                     </div>
 
-                    {/* Move Modal */}
+                    {/* Move Modal (转移弹窗) */}
                     {moveModal.open && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setMoveModal({open:false, targetGroupWords:[]})}>
                             <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -407,6 +488,42 @@
                                     </div>
                                 </div>
                                 <button onClick={() => setMoveModal({open:false, targetGroupWords:[]})} className="mt-6 w-full py-3 text-gray-500 hover:bg-gray-50 rounded-xl font-medium">取消</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Edit Modal (编辑弹窗 - 新增) */}
+                    {editModal.open && (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setEditModal({...editModal, open:false})}>
+                            <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+                                <h3 className="text-xl font-bold mb-4 text-gray-800">编辑分组信息</h3>
+                                
+                                <div className="mb-4">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">分组名称</label>
+                                    <input 
+                                        type="text" 
+                                        value={editModal.currentName} 
+                                        onChange={e => setEditModal({...editModal, currentName: e.target.value})} 
+                                        placeholder="例如: 2010年真题阅读A" 
+                                        className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                        autoFocus
+                                    />
+                                </div>
+
+                                <div className="mb-6">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">备注 / 简介</label>
+                                    <textarea 
+                                        value={editModal.currentDesc} 
+                                        onChange={e => setEditModal({...editModal, currentDesc: e.target.value})} 
+                                        placeholder="例如: 这部分单词比较难，需要多复习几次..." 
+                                        className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none"
+                                    ></textarea>
+                                </div>
+
+                                <div className="flex space-x-3">
+                                    <button onClick={() => setEditModal({...editModal, open:false})} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">取消</button>
+                                    <button onClick={saveGroupInfo} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition">保存</button>
+                                </div>
                             </div>
                         </div>
                     )}
