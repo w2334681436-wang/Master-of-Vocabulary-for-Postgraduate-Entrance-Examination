@@ -15,6 +15,7 @@
     <script crossorigin src="https://cdn.staticfile.net/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdn.staticfile.net/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script crossorigin src="https://cdn.staticfile.net/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
     <style>
         body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; user-select: none; }
@@ -30,28 +31,39 @@
         .btn-press:active { transform: scale(0.96); transition: transform 0.1s; }
         .safe-top { padding-top: env(safe-area-inset-top); }
         .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+        
+        /* Markdown 样式优化 */
+        .markdown-body p { margin-bottom: 0.5em; }
+        .markdown-body strong { color: inherit; font-weight: 700; }
+        .markdown-body ul { list-style-type: disc; padding-left: 1.2em; margin-bottom: 0.5em; }
+        .markdown-body ol { list-style-type: decimal; padding-left: 1.2em; margin-bottom: 0.5em; }
+        .markdown-body code { background-color: rgba(0,0,0,0.05); padding: 0.1em 0.3em; border-radius: 3px; font-family: monospace; }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-900 h-screen overflow-hidden flex flex-col">
     <div id="root" class="h-full flex flex-col">
         <div style="height: 100vh; display: flex; justify-content: center; align-items: center; flex-direction: column;">
             <div style="width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top-color: #4f46e5; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+            <p style="margin-top: 15px; color: #666; font-size: 14px;">资源加载中...</p>
         </div>
         <style>@keyframes spin { 0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);} }</style>
     </div>
 
     <script>
+        // 错误捕获，防止白屏
+        window.onerror = function(msg, url, line, col, error) {
+            var root = document.getElementById('root');
+            root.innerHTML = '<div style="padding:20px;text-align:center;color:red;"><h3>发生错误</h3><p>'+msg+'</p><p>Line: '+line+'</p></div>';
+        };
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('SW success'))
-                    .catch(err => console.log('SW fail', err));
+                navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW fail', err));
             });
         }
     </script>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo, useRef } = React;
+        const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
         // --- Icons ---
         const Icons = {
@@ -76,8 +88,13 @@
             X: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
             Folder: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>,
             FolderInput: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 2H4a2 2 0 0 0-2 2Z"/><path d="m10 13 2 2 4-4"/></svg>,
-            Move: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3"/></svg>
+            Move: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3"/></svg>,
             Edit: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+            MessageCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>,
+            Send: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
+            Zap: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+            BookOpen: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
+            Palette: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
         };
 
         const Icon = ({ name, size = 20, className = "" }) => {
@@ -124,6 +141,193 @@
             }
         };
 
+        // --- Word Chat Component (AI 老师) ---
+        const WordChat = ({ word, onClose, config }) => {
+            const [messages, setMessages] = useState([]);
+            const [input, setInput] = useState("");
+            const [isLoading, setIsLoading] = useState(false);
+            const [thinkMode, setThinkMode] = useState("fast"); // fast or deep
+            const [bubbleColor, setBubbleColor] = useState("bg-indigo-600"); // default color
+            const [showColorPicker, setShowColorPicker] = useState(false);
+            const messagesEndRef = useRef(null);
+
+            const colors = [
+                { name: "Indigo", class: "bg-indigo-600" },
+                { name: "Pink", class: "bg-pink-500" },
+                { name: "Green", class: "bg-emerald-500" },
+                { name: "Blue", class: "bg-blue-500" },
+                { name: "Orange", class: "bg-orange-500" },
+                { name: "Black", class: "bg-gray-800" }
+            ];
+
+            const scrollToBottom = () => {
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            };
+
+            useEffect(() => {
+                scrollToBottom();
+            }, [messages]);
+
+            // 初始问候
+            useEffect(() => {
+                const initialMsg = {
+                    role: "assistant",
+                    content: `你好！我是你的单词私教。我们今天要学习的单词是 **${word}**。\n你可以问我它的用法、记忆方法，或者让我造句。`
+                };
+                setMessages([initialMsg]);
+                // 自动触发第一次讲解
+                handleSend(null, `请用通俗易懂的语言讲解单词 "${word}" 的含义，并给出考研难度的例句。`);
+            }, []);
+
+            const handleSend = async (e, manualContent) => {
+                if (e) e.preventDefault();
+                const content = manualContent || input.trim();
+                if (!content || isLoading) return;
+
+                if (!manualContent) {
+                    setMessages(prev => [...prev, { role: "user", content }]);
+                    setInput("");
+                }
+                setIsLoading(true);
+
+                // 构建系统提示词
+                const systemPrompt = thinkMode === 'deep' 
+                    ? "你是一位资深考研英语老师。请深入讲解单词的词源、语境、熟词僻义以及在考研真题中的常见考法。使用 Markdown 格式，重点加粗。解释要详尽。"
+                    : "你是一位风趣幽默的英语外教。请用通俗易懂、简单的中文解释单词，多用生活化的例子。保持回复简短有力。使用 Markdown 格式。";
+
+                try {
+                    // 准备消息历史
+                    const apiMessages = [
+                        { role: "system", content: systemPrompt },
+                        ...messages.filter(m => m.role !== 'error'),
+                        { role: "user", content }
+                    ];
+
+                    // 占位消息用于流式更新
+                    setMessages(prev => [...prev, { role: "assistant", content: "..." }]);
+
+                    let baseUrl = config.baseUrl.replace(/\/$/, "");
+                    if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel")) baseUrl += "/v1";
+
+                    const response = await fetch(`${baseUrl}/chat/completions`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${config.apiKey}`
+                        },
+                        body: JSON.stringify({
+                            model: config.model,
+                            messages: apiMessages,
+                            stream: true // 开启流式
+                        })
+                    });
+
+                    if (!response.ok) throw new Error("API 请求失败");
+
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder("utf-8");
+                    let fullText = "";
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split("\n");
+                        
+                        for (const line of lines) {
+                            if (line.startsWith("data: ")) {
+                                const data = line.slice(6);
+                                if (data === "[DONE]") break;
+                                try {
+                                    const json = JSON.parse(data);
+                                    const delta = json.choices[0]?.delta?.content || "";
+                                    fullText += delta;
+                                    
+                                    // 实时更新最后一条消息
+                                    setMessages(prev => {
+                                        const newMsgs = [...prev];
+                                        newMsgs[newMsgs.length - 1] = { role: "assistant", content: fullText };
+                                        return newMsgs;
+                                    });
+                                } catch (e) { }
+                            }
+                        }
+                    }
+                } catch (error) {
+                    setMessages(prev => [...prev, { role: "error", content: "出错了: " + error.message + " (请检查 API 设置)" }]);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 z-[60] flex flex-col bg-white md:max-w-md md:mx-auto md:my-4 md:rounded-2xl md:shadow-2xl md:border md:border-gray-200 overflow-hidden animate-slide-up">
+                    {/* Header */}
+                    <div className="flex justify-between items-center p-4 border-b bg-white z-10 shadow-sm">
+                        <div className="flex items-center space-x-2">
+                            <h3 className="font-bold text-lg text-gray-800">{word} - AI 助教</h3>
+                            <div className="flex bg-gray-100 rounded-lg p-0.5">
+                                <button onClick={() => setThinkMode('fast')} className={`px-2 py-0.5 text-xs rounded-md transition ${thinkMode==='fast' ? 'bg-white shadow text-indigo-600 font-bold' : 'text-gray-500'}`} title="快速响应，通俗易懂"><Icon name="Zap" size={12}/> 快速</button>
+                                <button onClick={() => setThinkMode('deep')} className={`px-2 py-0.5 text-xs rounded-md transition ${thinkMode==='deep' ? 'bg-white shadow text-indigo-600 font-bold' : 'text-gray-500'}`} title="深度解析，考研考法"><Icon name="BookOpen" size={12}/> 深度</button>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button onClick={()=>setShowColorPicker(!showColorPicker)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500 relative">
+                                <Icon name="Palette" />
+                                {showColorPicker && (
+                                    <div className="absolute right-0 top-full mt-2 bg-white shadow-xl border rounded-lg p-2 grid grid-cols-3 gap-2 w-32 z-50">
+                                        {colors.map(c => (
+                                            <div key={c.name} onClick={()=>setBubbleColor(c.class)} className={`w-6 h-6 rounded-full cursor-pointer border border-gray-100 ${c.class}`}></div>
+                                        ))}
+                                    </div>
+                                )}
+                            </button>
+                            <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-500"><Icon name="X" /></button>
+                        </div>
+                    </div>
+
+                    {/* Chat Area */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 custom-scroll" onClick={()=>setShowColorPicker(false)}>
+                        {messages.map((msg, idx) => (
+                            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-[85%] p-3 rounded-2xl text-sm md:text-base leading-relaxed shadow-sm ${
+                                    msg.role === 'user' 
+                                    ? 'bg-white text-gray-800 border border-gray-100 rounded-tr-none' 
+                                    : `${bubbleColor} text-white rounded-tl-none markdown-body`
+                                } ${msg.role === 'error' ? 'bg-red-50 text-red-600 border-red-200' : ''}`}>
+                                    {msg.role === 'assistant' ? (
+                                        <div dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }} />
+                                    ) : (
+                                        msg.content
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    {/* Input Area */}
+                    <div className="p-3 bg-white border-t flex items-end gap-2 safe-bottom">
+                        <textarea 
+                            value={input}
+                            onChange={e => setInput(e.target.value)}
+                            onKeyDown={e => {if(e.key==='Enter' && !e.shiftKey){e.preventDefault(); handleSend();}}}
+                            placeholder="还有哪里不懂？可以继续问..."
+                            className="flex-1 max-h-32 p-3 bg-gray-50 border-0 rounded-xl focus:ring-2 focus:ring-indigo-100 outline-none resize-none text-sm"
+                            rows="1"
+                        ></textarea>
+                        <button 
+                            onClick={(e)=>handleSend(e)} 
+                            disabled={isLoading || !input.trim()}
+                            className={`p-3 rounded-xl text-white shadow-md transition-all ${isLoading || !input.trim() ? 'bg-gray-300' : bubbleColor} hover:opacity-90 active:scale-95`}
+                        >
+                            {isLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Icon name="Send" size={20} />}
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
         // --- Components ---
 
         const Navbar = ({ view, setView, goBack }) => {
@@ -161,7 +365,7 @@
             );
         };
 
-        const WordListMode = ({ words, setWords }) => {
+        const WordListMode = ({ words, setWords, setChatSession }) => {
             const [search, setSearch] = useState("");
             const [sortMode, setSortMode] = useState('default');
             const [sortDesc, setSortDesc] = useState(false);
@@ -195,13 +399,16 @@
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                             {displayWords.map((word) => (
-                                <div key={word.id} className="bg-white rounded-xl shadow-sm p-5 hover:shadow-md transition duration-200 border border-gray-100 hover:border-indigo-100 flex flex-col h-full">
+                                <div key={word.id} className="bg-white rounded-xl shadow-sm p-5 hover:shadow-md transition duration-200 border border-gray-100 hover:border-indigo-100 flex flex-col h-full relative group">
                                     <div className="flex justify-between items-baseline mb-3">
                                         <div className="flex items-baseline space-x-2 overflow-hidden">
                                             <h3 className="text-lg font-bold text-gray-900 truncate">{word.word}</h3>
                                             <span className="text-sm font-mono text-gray-500 truncate">{word.phonetic}</span>
                                         </div>
-                                        <div className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full whitespace-nowrap font-medium">复习 {word.stats?.reviewCount || 0}</div>
+                                        <div className="flex items-center gap-1">
+                                            <button onClick={(e)=>{e.stopPropagation(); setChatSession(word.word);}} className="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition" title="AI 详解"><Icon name="MessageCircle" size={18}/></button>
+                                            <div className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full whitespace-nowrap font-medium">复习 {word.stats?.reviewCount || 0}</div>
+                                        </div>
                                     </div>
                                     <div className="space-y-2 flex-1">
                                         {word.meanings.map((m, mIdx) => (
@@ -252,7 +459,6 @@
             return (
                 <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 bg-gray-50">
                     <div className="max-w-5xl mx-auto space-y-8 pb-10">
-                        {/* 顶部复习卡片 */}
                         <div onClick={startReview} className="w-full bg-gradient-to-br from-indigo-600 to-violet-600 p-8 rounded-2xl text-white shadow-xl shadow-indigo-200 cursor-pointer transform transition hover:-translate-y-1 hover:shadow-2xl active:scale-[0.99] relative overflow-hidden flex flex-col md:flex-row justify-between items-center group">
                             <div className="z-10 relative text-center md:text-left">
                                 <h2 className="text-3xl font-bold mb-2 tracking-tight">智能复习计划</h2>
@@ -261,13 +467,11 @@
                             <div className="mt-4 md:mt-0 bg-white/20 w-20 h-20 rounded-full flex items-center justify-center z-10 relative group-hover:scale-110 transition duration-300 backdrop-blur-sm border border-white/30">
                                 <Icon name="Brain" size={40} className="text-white"/>
                             </div>
-                            {/* 装饰背景 */}
                             <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
                             <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-indigo-900/20 rounded-full blur-2xl"></div>
                             {stats.review > 0 && <div className="absolute top-6 right-6 w-3 h-3 bg-red-400 rounded-full animate-ping"></div>}
                         </div>
 
-                        {/* 考频分类 */}
                         <div>
                             <h3 className="font-bold text-gray-800 px-1 flex items-center text-lg mb-4"><Icon name="List" size={20} className="mr-2 text-indigo-600"/>核心考频</h3>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-6">
@@ -279,7 +483,6 @@
                             </div>
                         </div>
 
-                        {/* 自定义分组 */}
                         {customCats.length > 0 && (
                             <div>
                                 <h3 className="font-bold text-gray-800 px-1 flex items-center text-lg mb-4"><Icon name="Folder" size={20} className="mr-2 text-indigo-600"/>我的分组</h3>
@@ -297,10 +500,8 @@
             const [moveModal, setMoveModal] = useState({ open: false, targetGroupWords: [] });
             const [editModal, setEditModal] = useState({ open: false, batchId: '', currentName: '', currentDesc: '' });
             const [customTarget, setCustomTarget] = useState('');
-            // 新增：用于存储分组备注和自定义名称的状态
             const [groupMeta, setGroupMeta] = useState({});
 
-            // 初始化加载分组信息
             useEffect(() => {
                 try {
                     const savedMeta = localStorage.getItem('kaoyan_group_meta');
@@ -323,11 +524,9 @@
                         const groupWords = batchWords.slice(start, end);
                         const mastered = groupWords.filter(w => w.stats && w.stats.interval > 0).length;
                         
-                        // 获取自定义名称和备注
                         const meta = groupMeta[batchId] || {};
-                        let batchName = meta.name; // 优先使用自定义名称
+                        let batchName = meta.name;
                         
-                        // 如果没有自定义名称，使用默认逻辑
                         if (!batchName) {
                             if (batchId !== 'default') { 
                                 const ts = parseInt(batchId.split('-')[1]); 
@@ -347,7 +546,7 @@
                             batchId, 
                             batchIndex: i, 
                             batchName, 
-                            desc: meta.desc || "", // 备注
+                            desc: meta.desc || "", 
                             start: start + 1, 
                             end, 
                             total: groupWords.length, 
@@ -388,10 +587,8 @@
                 alert("转移成功！");
             };
 
-            // 打开编辑弹窗
             const openEditModal = (e, batchId, currentName, currentDesc) => {
                 e.stopPropagation();
-                // 如果是默认名称，弹窗里显示为空，方便修改
                 const isDefaultName = currentName.includes("导入") || currentName === "默认词库" || currentName === "新批次";
                 setEditModal({ 
                     open: true, 
@@ -401,7 +598,6 @@
                 });
             };
 
-            // 保存编辑信息
             const saveGroupInfo = () => {
                 const newMeta = { 
                     ...groupMeta, 
@@ -445,7 +641,6 @@
                                         </div>
                                     </div>
                                     
-                                    {/* 备注显示区域 */}
                                     <div className="mb-3 flex-1">
                                         {g.desc ? (
                                             <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded border border-gray-100 line-clamp-2">{g.desc}</p>
@@ -470,7 +665,6 @@
                         }
                     </div>
 
-                    {/* Move Modal (转移弹窗) */}
                     {moveModal.open && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setMoveModal({open:false, targetGroupWords:[]})}>
                             <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -492,34 +686,18 @@
                         </div>
                     )}
 
-                    {/* Edit Modal (编辑弹窗 - 新增) */}
                     {editModal.open && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setEditModal({...editModal, open:false})}>
                             <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
                                 <h3 className="text-xl font-bold mb-4 text-gray-800">编辑分组信息</h3>
-                                
                                 <div className="mb-4">
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">分组名称</label>
-                                    <input 
-                                        type="text" 
-                                        value={editModal.currentName} 
-                                        onChange={e => setEditModal({...editModal, currentName: e.target.value})} 
-                                        placeholder="例如: 2010年真题阅读A" 
-                                        className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
-                                        autoFocus
-                                    />
+                                    <input type="text" value={editModal.currentName} onChange={e => setEditModal({...editModal, currentName: e.target.value})} placeholder="例如: 2010年真题阅读A" className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" autoFocus />
                                 </div>
-
                                 <div className="mb-6">
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">备注 / 简介</label>
-                                    <textarea 
-                                        value={editModal.currentDesc} 
-                                        onChange={e => setEditModal({...editModal, currentDesc: e.target.value})} 
-                                        placeholder="例如: 这部分单词比较难，需要多复习几次..." 
-                                        className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none"
-                                    ></textarea>
+                                    <textarea value={editModal.currentDesc} onChange={e => setEditModal({...editModal, currentDesc: e.target.value})} placeholder="例如: 这部分单词比较难，需要多复习几次..." className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none"></textarea>
                                 </div>
-
                                 <div className="flex space-x-3">
                                     <button onClick={() => setEditModal({...editModal, open:false})} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">取消</button>
                                     <button onClick={saveGroupInfo} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition">保存</button>
@@ -531,7 +709,7 @@
             );
         };
 
-        const StudySession = ({ words, setWords, sessionConfig, onExit, config }) => {
+        const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
             const [queue, setQueue] = useState([]);
             const [currentIdx, setCurrentIdx] = useState(0);
             const [isFlipped, setIsFlipped] = useState(false);
@@ -599,13 +777,14 @@
                     
                     {/* 退出按钮 - 悬浮在左上角 */}
                     <button onClick={onExit} className="absolute top-4 left-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title="退出"><Icon name="ArrowLeft" size={24}/></button>
-                    <div className="absolute top-6 right-6 z-20 text-xs font-bold text-gray-400 bg-white/50 px-2 py-1 rounded backdrop-blur border border-white/50 uppercase tracking-wider">{sessionConfig.type === 'review' ? 'Review' : 'Learn'}</div>
+                    
+                    {/* AI Chat Button in Study Mode */}
+                    <button onClick={(e)=>{e.stopPropagation(); setChatSession(currentCard.word);}} className="absolute top-4 right-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-indigo-500 hover:text-white hover:bg-indigo-500 transition" title="AI 详解"><Icon name="MessageCircle" size={24}/></button>
 
-                    {/* 卡片容器 - 关键修改：使用 flex-center + 响应式尺寸 */}
+                    {/* 卡片容器 */}
                     <div className="flex-1 flex items-center justify-center p-4 md:p-8 overflow-hidden">
                         <div className="relative scene w-full max-w-sm md:max-w-3xl aspect-[3/4] md:aspect-[4/3] max-h-[85vh]">
                             <div className={`card-object ${isFlipped ? 'is-flipped' : ''}`} onClick={() => setIsFlipped(!isFlipped)}>
-                                
                                 {/* 正面 */}
                                 <div className="card-face flex flex-col items-center justify-center p-8 md:p-12 text-center bg-gradient-to-br from-white to-gray-50 border border-white">
                                     <div className="flex-1 flex flex-col items-center justify-center w-full">
@@ -661,7 +840,6 @@
                                                 </div>
                                             );
                                         })}
-                                        {/* 垫高底部，防止内容被遮挡 */}
                                         <div className="h-20"></div> 
                                     </div>
 
@@ -859,14 +1037,18 @@
             const [words, setWords] = useState([]);
             const [sessionConfig, setSessionConfig] = useState({}); 
             const [config, setConfig] = useState({ type: 'openai', baseUrl: 'https://api.deepseek.com', apiKey: '', model: 'deepseek-chat', groupSize: 208 });
+            const [chatSession, setChatSession] = useState(null); // null or word string
 
             useEffect(() => {
-                const saved = localStorage.getItem('kaoyan_vocab_list');
-                const savedCfg = localStorage.getItem('kaoyan_config');
-                if (saved) setWords(JSON.parse(saved));
-                if (savedCfg) setConfig(JSON.parse(savedCfg));
-                const loader = document.getElementById('loading-spinner');
-                if(loader) loader.parentElement.style.display = 'none';
+                try {
+                    const saved = localStorage.getItem('kaoyan_vocab_list');
+                    const savedCfg = localStorage.getItem('kaoyan_config');
+                    if (saved) setWords(JSON.parse(saved));
+                    if (savedCfg) setConfig(JSON.parse(savedCfg));
+                } catch(e) { console.error("Data load fail", e); }
+                // Remove spinner once React mounts
+                const loader = document.getElementById('root').querySelector('div');
+                if(loader && loader.style.border) loader.remove(); 
             }, []);
 
             const handleBack = () => {
@@ -886,11 +1068,28 @@
                     <main className="flex-1 overflow-hidden flex flex-col relative">
                         {view === 'home' && <Dashboard words={words} setView={setView} setSessionConfig={setSessionConfig} />}
                         {view === 'group_list' && <GroupList words={words} setWords={setWords} category={sessionConfig.category} setView={setView} setSessionConfig={setSessionConfig} config={config} />}
-                        {view === 'study' && <StudySession words={words} setWords={setWords} sessionConfig={sessionConfig} onExit={handleBack} config={config} />}
-                        {view === 'list' && <WordListMode words={words} setWords={setWords} />}
+                        {view === 'study' && <StudySession words={words} setWords={setWords} sessionConfig={sessionConfig} onExit={handleBack} config={config} setChatSession={setChatSession} />}
+                        {view === 'list' && <WordListMode words={words} setWords={setWords} setChatSession={setChatSession} />}
                         {view === 'import' && <ImportExport setWords={setWords} words={words} setView={setView} config={config} />}
                         {view === 'settings' && <SettingsPanel config={config} setConfig={setConfig} setView={setView} />}
+                        
+                        {/* Chat Overlay */}
+                        {chatSession && (
+                            <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4 animate-fade-in">
+                                <WordChat 
+                                    word={chatSession} 
+                                    onClose={() => setChatSession(null)} 
+                                    config={config} 
+                                />
+                            </div>
+                        )}
                     </main>
+                    <style>{`
+                        @keyframes slide-up { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+                        .animate-slide-up { animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+                        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+                        .animate-fade-in { animation: fade-in 0.2s ease-out; }
+                    `}</style>
                 </div>
             );
         };
