@@ -114,16 +114,28 @@
             "custom": { name: "自定义 (OpenAI兼容)", type: "openai", url: "" }
         };
 
-        const playAudio = (text) => {
-            const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(text)}&type=2`);
-            audio.play().catch(e => {
+       const playAudio = (text) => {
+            // 如果文本包含空格且长度大于30，或者包含标点，视为句子，使用浏览器原生语音
+            if (text.includes(' ') || text.length > 20) {
                 if ('speechSynthesis' in window) {
                     window.speechSynthesis.cancel();
                     const u = new SpeechSynthesisUtterance(text);
-                    u.lang = 'en-US';
+                    u.lang = 'en-US'; // 美式发音
+                    u.rate = 0.9; // 语速稍慢一点点，适合练习
                     window.speechSynthesis.speak(u);
                 }
-            });
+            } else {
+                // 单个单词继续用有道接口，发音更自然
+                const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(text)}&type=2`);
+                audio.play().catch(e => {
+                    // 降级处理
+                    if ('speechSynthesis' in window) {
+                        const u = new SpeechSynthesisUtterance(text);
+                        u.lang = 'en-US';
+                        window.speechSynthesis.speak(u);
+                    }
+                });
+            }
         };
 
         const calculateNextReview = (rating, currentInterval, easeFactor, currentReviewCount) => {
@@ -142,12 +154,13 @@
         };
 
         // --- Word Chat Component (AI 老师) ---
+    // --- Word Chat Component (AI 老师) ---
         const WordChat = ({ word, onClose, config }) => {
             const [messages, setMessages] = useState([]);
             const [input, setInput] = useState("");
             const [isLoading, setIsLoading] = useState(false);
-            const [thinkMode, setThinkMode] = useState("fast"); // fast or deep
-            const [bubbleColor, setBubbleColor] = useState("bg-indigo-600"); // default color
+            const [thinkMode, setThinkMode] = useState("fast"); // fast, deep, or oral
+            const [bubbleColor, setBubbleColor] = useState("bg-indigo-600");
             const [showColorPicker, setShowColorPicker] = useState(false);
             const messagesEndRef = useRef(null);
 
@@ -164,19 +177,17 @@
                 messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
             };
 
-            useEffect(() => {
-                scrollToBottom();
-            }, [messages]);
+            useEffect(() => { scrollToBottom(); }, [messages]);
 
             // 初始问候
             useEffect(() => {
                 const initialMsg = {
                     role: "assistant",
-                    content: `你好！我是你的单词私教。我们今天要学习的单词是 **${word}**。\n你可以问我它的用法、记忆方法，或者让我造句。`
+                    content: `Hi! 我是你的专属 AI 私教。\n我们今天要死磕的单词是： **${word}**。\n\n你可以切换上方模式：\n⚡ **快速**：简单通俗讲解\n📖 **深度**：考研真题考法\n👄 **口语**：纯英对话练听力`
                 };
                 setMessages([initialMsg]);
-                // 自动触发第一次讲解
-                handleSend(null, `请用通俗易懂的语言讲解单词 "${word}" 的含义，并给出考研难度的例句。`);
+                // 默认触发快速讲解
+                handleSend(null, `请用通俗易懂、生活化的场景（像讲故事一样）讲解单词 "${word}"。拆分为：1.作为名词/动词的核心含义；2.给出一个容易记住的场景例子；3.总结记忆点。使用 Markdown 格式，重点加粗。`);
             }, []);
 
             const handleSend = async (e, manualContent) => {
@@ -190,20 +201,24 @@
                 }
                 setIsLoading(true);
 
-                // 构建系统提示词
-                const systemPrompt = thinkMode === 'deep' 
-                    ? "你是一位资深考研英语老师。请深入讲解单词的词源、语境、熟词僻义以及在考研真题中的常见考法。使用 Markdown 格式，重点加粗。解释要详尽。"
-                    : "你是一位风趣幽默的英语外教。请用通俗易懂、简单的中文解释单词，多用生活化的例子。保持回复简短有力。使用 Markdown 格式。";
+                // 精心设计的提示词
+                let systemPrompt = "";
+                if (thinkMode === 'oral') {
+                    systemPrompt = "You are a friendly American English tutor. Speak ONLY in English. Keep your sentences simple, clear, and encouraging. Correct the user's grammar gently if needed. Engage in a conversation using the target word.";
+                } else if (thinkMode === 'deep') {
+                    systemPrompt = "你是一位严肃的考研英语命题组专家。请从词源词根、熟词僻义、历年真题考法、易混词辨析这四个维度进行深度解析。必须使用 Markdown 格式，关键点加粗。";
+                } else {
+                    // 这是你最喜欢的模式
+                    systemPrompt = "你是一位非常擅长类比的英语私教。请用最通俗、生活化、甚至有点幽默的语言解释单词。核心策略：1.把抽象概念具象化（比如把 representative 比作“替身”）。2.多用生活场景串联不同词性。3.最后给一句“简单记”口诀。使用 Markdown 格式。";
+                }
 
                 try {
-                    // 准备消息历史
                     const apiMessages = [
                         { role: "system", content: systemPrompt },
-                        ...messages.filter(m => m.role !== 'error'),
+                        ...messages.filter(m => m.role !== 'error' && m.content !== '...'),
                         { role: "user", content }
                     ];
 
-                    // 占位消息用于流式更新
                     setMessages(prev => [...prev, { role: "assistant", content: "..." }]);
 
                     let baseUrl = config.baseUrl.replace(/\/$/, "");
@@ -218,7 +233,7 @@
                         body: JSON.stringify({
                             model: config.model,
                             messages: apiMessages,
-                            stream: true // 开启流式
+                            stream: true
                         })
                     });
 
@@ -243,7 +258,6 @@
                                     const delta = json.choices[0]?.delta?.content || "";
                                     fullText += delta;
                                     
-                                    // 实时更新最后一条消息
                                     setMessages(prev => {
                                         const newMsgs = [...prev];
                                         newMsgs[newMsgs.length - 1] = { role: "assistant", content: fullText };
@@ -254,7 +268,7 @@
                         }
                     }
                 } catch (error) {
-                    setMessages(prev => [...prev, { role: "error", content: "出错了: " + error.message + " (请检查 API 设置)" }]);
+                    setMessages(prev => [...prev, { role: "error", content: "出错了: " + error.message }]);
                 } finally {
                     setIsLoading(false);
                 }
@@ -264,42 +278,49 @@
                 <div className="fixed inset-0 z-[60] flex flex-col bg-white md:max-w-md md:mx-auto md:my-4 md:rounded-2xl md:shadow-2xl md:border md:border-gray-200 overflow-hidden animate-slide-up">
                     {/* Header */}
                     <div className="flex justify-between items-center p-4 border-b bg-white z-10 shadow-sm">
-                        <div className="flex items-center space-x-2">
-                            <h3 className="font-bold text-lg text-gray-800">{word} - AI 助教</h3>
-                            <div className="flex bg-gray-100 rounded-lg p-0.5">
-                                <button onClick={() => setThinkMode('fast')} className={`px-2 py-0.5 text-xs rounded-md transition ${thinkMode==='fast' ? 'bg-white shadow text-indigo-600 font-bold' : 'text-gray-500'}`} title="快速响应，通俗易懂"><Icon name="Zap" size={12}/> 快速</button>
-                                <button onClick={() => setThinkMode('deep')} className={`px-2 py-0.5 text-xs rounded-md transition ${thinkMode==='deep' ? 'bg-white shadow text-indigo-600 font-bold' : 'text-gray-500'}`} title="深度解析，考研考法"><Icon name="BookOpen" size={12}/> 深度</button>
+                        <div className="flex flex-col">
+                            <h3 className="font-bold text-lg text-gray-800 flex items-center">{word} <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded">AI 私教</span></h3>
+                            {/* 模式切换按钮 */}
+                            <div className="flex gap-2 mt-2">
+                                <button onClick={() => setThinkMode('fast')} className={`px-2 py-1 text-xs rounded-lg transition border ${thinkMode==='fast' ? 'bg-indigo-50 text-indigo-600 border-indigo-200 font-bold' : 'text-gray-500 border-transparent'}`}>⚡ 快速理解</button>
+                                <button onClick={() => setThinkMode('deep')} className={`px-2 py-1 text-xs rounded-lg transition border ${thinkMode==='deep' ? 'bg-indigo-50 text-indigo-600 border-indigo-200 font-bold' : 'text-gray-500 border-transparent'}`}>📖 深度考研</button>
+                                <button onClick={() => setThinkMode('oral')} className={`px-2 py-1 text-xs rounded-lg transition border ${thinkMode==='oral' ? 'bg-orange-50 text-orange-600 border-orange-200 font-bold' : 'text-gray-500 border-transparent'}`}>👄 口语对练</button>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <button onClick={()=>setShowColorPicker(!showColorPicker)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500 relative">
-                                <Icon name="Palette" />
-                                {showColorPicker && (
-                                    <div className="absolute right-0 top-full mt-2 bg-white shadow-xl border rounded-lg p-2 grid grid-cols-3 gap-2 w-32 z-50">
-                                        {colors.map(c => (
-                                            <div key={c.name} onClick={()=>setBubbleColor(c.class)} className={`w-6 h-6 rounded-full cursor-pointer border border-gray-100 ${c.class}`}></div>
-                                        ))}
-                                    </div>
-                                )}
-                            </button>
-                            <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-500"><Icon name="X" /></button>
+                        <div className="flex items-center gap-1">
+                            <button onClick={()=>setShowColorPicker(!showColorPicker)} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 relative"><Icon name="Palette" size={20}/></button>
+                            {showColorPicker && (
+                                <div className="absolute right-14 top-16 bg-white shadow-xl border rounded-lg p-2 grid grid-cols-3 gap-2 w-32 z-50">
+                                    {colors.map(c => (<div key={c.name} onClick={()=>setBubbleColor(c.class)} className={`w-6 h-6 rounded-full cursor-pointer border border-gray-100 ${c.class}`}></div>))}
+                                </div>
+                            )}
+                            <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-400"><Icon name="X" size={24}/></button>
                         </div>
                     </div>
 
                     {/* Chat Area */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 custom-scroll" onClick={()=>setShowColorPicker(false)}>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-5 bg-gray-50 custom-scroll" onClick={()=>setShowColorPicker(false)}>
                         {messages.map((msg, idx) => (
-                            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[85%] p-3 rounded-2xl text-sm md:text-base leading-relaxed shadow-sm ${
-                                    msg.role === 'user' 
-                                    ? 'bg-white text-gray-800 border border-gray-100 rounded-tr-none' 
-                                    : `${bubbleColor} text-white rounded-tl-none markdown-body`
-                                } ${msg.role === 'error' ? 'bg-red-50 text-red-600 border-red-200' : ''}`}>
-                                    {msg.role === 'assistant' ? (
-                                        <div dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }} />
-                                    ) : (
-                                        msg.content
-                                    )}
+                            <div key={idx} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`flex flex-col max-w-[90%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                    <div className={`p-3.5 rounded-2xl text-sm md:text-base leading-relaxed shadow-sm relative group ${
+                                        msg.role === 'user' 
+                                        ? 'bg-white text-gray-800 border border-gray-100 rounded-tr-none' 
+                                        : `${bubbleColor} text-white rounded-tl-none markdown-body`
+                                    } ${msg.role === 'error' ? 'bg-red-50 text-red-600 border-red-200' : ''}`}>
+                                        {msg.role === 'assistant' ? <div dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }} /> : msg.content}
+                                        
+                                        {/* 播放按钮：只在 AI 消息且不是加载中显示 */}
+                                        {msg.role === 'assistant' && msg.content !== '...' && (
+                                            <button 
+                                                onClick={(e) => {e.stopPropagation(); playAudio(msg.content.replace(/[\*\#]/g, ''));}} 
+                                                className="absolute -right-8 bottom-0 p-1.5 text-gray-400 hover:text-indigo-600 bg-white/50 rounded-full hover:bg-white transition shadow-sm"
+                                                title="播放语音"
+                                            >
+                                                <Icon name="Volume2" size={16}/>
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -312,22 +333,17 @@
                             value={input}
                             onChange={e => setInput(e.target.value)}
                             onKeyDown={e => {if(e.key==='Enter' && !e.shiftKey){e.preventDefault(); handleSend();}}}
-                            placeholder="还有哪里不懂？可以继续问..."
+                            placeholder={thinkMode === 'oral' ? "Reply in English..." : "继续追问，比如：给个例句..."}
                             className="flex-1 max-h-32 p-3 bg-gray-50 border-0 rounded-xl focus:ring-2 focus:ring-indigo-100 outline-none resize-none text-sm"
                             rows="1"
                         ></textarea>
-                        <button 
-                            onClick={(e)=>handleSend(e)} 
-                            disabled={isLoading || !input.trim()}
-                            className={`p-3 rounded-xl text-white shadow-md transition-all ${isLoading || !input.trim() ? 'bg-gray-300' : bubbleColor} hover:opacity-90 active:scale-95`}
-                        >
+                        <button onClick={(e)=>handleSend(e)} disabled={isLoading || !input.trim()} className={`p-3 rounded-xl text-white shadow-md transition-all ${isLoading || !input.trim() ? 'bg-gray-300' : bubbleColor} active:scale-95`}>
                             {isLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Icon name="Send" size={20} />}
                         </button>
                     </div>
                 </div>
             );
         };
-
         // --- Components ---
 
         const Navbar = ({ view, setView, goBack }) => {
@@ -365,7 +381,7 @@
             );
         };
 
-        const WordListMode = ({ words, setWords, setChatSession }) => {
+      const WordListMode = ({ words, setWords, setChatSession }) => {
             const [search, setSearch] = useState("");
             const [sortMode, setSortMode] = useState('default');
             const [sortDesc, setSortDesc] = useState(false);
@@ -400,14 +416,16 @@
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                             {displayWords.map((word) => (
                                 <div key={word.id} className="bg-white rounded-xl shadow-sm p-5 hover:shadow-md transition duration-200 border border-gray-100 hover:border-indigo-100 flex flex-col h-full relative group">
-                                    <div className="flex justify-between items-baseline mb-3">
+                                    {/* 修复点：这里把 items-baseline 改为了 items-center */}
+                                    <div className="flex justify-between items-center mb-3">
                                         <div className="flex items-baseline space-x-2 overflow-hidden">
                                             <h3 className="text-lg font-bold text-gray-900 truncate">{word.word}</h3>
                                             <span className="text-sm font-mono text-gray-500 truncate">{word.phonetic}</span>
                                         </div>
-                                        <div className="flex items-center gap-1">
-                                            <button onClick={(e)=>{e.stopPropagation(); setChatSession(word.word);}} className="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition" title="AI 详解"><Icon name="MessageCircle" size={18}/></button>
-                                            <div className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full whitespace-nowrap font-medium">复习 {word.stats?.reviewCount || 0}</div>
+                                        <div className="flex items-center gap-2">
+                                            {/* AI 按钮 */}
+                                            <button onClick={(e)=>{e.stopPropagation(); setChatSession(word.word);}} className="p-1.5 bg-indigo-50 text-indigo-500 hover:text-white hover:bg-indigo-500 rounded-full transition shadow-sm" title="AI 详解"><Icon name="MessageCircle" size={18}/></button>
+                                            <div className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full whitespace-nowrap font-medium">复习 {word.stats?.reviewCount || 0}</div>
                                         </div>
                                     </div>
                                     <div className="space-y-2 flex-1">
