@@ -6,10 +6,9 @@
     <title>考研词汇大师</title>
     
     <link rel="manifest" href="./manifest.json">
-    
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="词汇大师">
+    <meta name="theme-color" content="#4f46e5">
     <link rel="apple-touch-icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4da.png">
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -45,27 +44,684 @@
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('SW 注册成功', reg))
-                    .catch(err => console.log('SW 注册失败', err));
+                    .then(reg => console.log('SW success'))
+                    .catch(err => console.log('SW fail', err));
             });
         }
     </script>
 
     <script type="text/babel">
-        // --- 这里原封不动放入之前为了平板优化的 React 代码 ---
-        // 为了篇幅，请把上一条回复中 <script type="text/babel"> 标签内的所有内容（从 const { useState... 到 root.render(<App />);）完整复制到这里
-        // 如果你需要我再次提供完整的包含React代码的index.html，请告诉我，但我建议直接用上一版的React逻辑，只改上面head和script部分。
-        
-        // --- 核心 React 代码开始 (请粘贴) ---
         const { useState, useEffect, useMemo, useRef } = React;
 
-        // ... (此处省略 1000 行代码，请把上一条回答里的 <script type="text/babel"> 里的内容完整贴进来) ...
-        // ... 如果你不想自己拼接，我可以给你一个完整的整合版 ...
-        
-        // 为了方便你，我这里放一个极简的占位符，请务必替换回上一版的代码！
-        const App = () => {
-             return <div className="p-10 text-center">请将上一版回答中的 React 代码（script type="text/babel" 标签内的内容）复制到这里覆盖。</div>
+        // --- Icons ---
+        const Icons = {
+            Book: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
+            Search: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>,
+            Brain: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>,
+            Volume2: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>,
+            Eye: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>,
+            EyeOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>,
+            Sparkles: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 3v4"/><path d="M3 5h4"/><path d="M3 9h4"/></svg>,
+            List: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>,
+            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.39a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
+            Upload: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+            Sort: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>,
+            Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+            Trash2: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>,
+            ArrowLeft: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>,
+            Maximize: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>,
+            Minimize: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>,
+            CloudDownload: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></svg>,
+            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
+            Folder: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>,
         };
+
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const Svg = Icons[name] || Icons.Book;
+            return <span className={`inline-block ${className}`} style={{ width: size, height: size }}><Svg /></span>;
+        };
+
+        const API_PRESETS = {
+            "deepseek": { name: "DeepSeek (深度求索)", type: "openai", url: "https://api.deepseek.com" },
+            "siliconflow": { name: "SiliconFlow (硅基流动)", type: "openai", url: "https://api.siliconflow.cn/v1" },
+            "openai": { name: "OpenAI (官方)", type: "openai", url: "https://api.openai.com/v1" },
+            "moonshot": { name: "Moonshot (Kimi)", type: "openai", url: "https://api.moonshot.cn/v1" },
+            "zhipu": { name: "智谱AI (GLM)", type: "openai", url: "https://open.bigmodel.cn/api/paas/v4" },
+            "aliyun": { name: "阿里云 (通义千问)", type: "openai", url: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
+            "yi": { name: "零一万物 (Yi)", type: "openai", url: "https://api.lingyiwanwu.com/v1" },
+            "google": { name: "Google (Gemini)", type: "google", url: "" },
+            "custom": { name: "自定义 (OpenAI兼容)", type: "openai", url: "" }
+        };
+
+        const playAudio = (text) => {
+            const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(text)}&type=2`);
+            audio.play().catch(e => {
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    const u = new SpeechSynthesisUtterance(text);
+                    u.lang = 'en-US';
+                    window.speechSynthesis.speak(u);
+                }
+            });
+        };
+
+        const calculateNextReview = (rating, currentInterval, easeFactor, currentReviewCount) => {
+            let nextInterval, nextEaseFactor = easeFactor;
+            const newReviewCount = (currentReviewCount || 0) + 1;
+            if (rating === 1) { 
+                return { interval: 0, easeFactor: Math.max(1.3, easeFactor - 0.2), isDueNow: true, reviewCount: newReviewCount };
+            } else if (rating === 2) { 
+                return { interval: 0.5, easeFactor: Math.max(1.3, easeFactor - 0.15), isDueNow: true, reviewCount: newReviewCount }; 
+            } else { 
+                if (currentInterval === 0) nextInterval = 1; 
+                else if (currentInterval === 1) nextInterval = 3;
+                else nextInterval = Math.round(currentInterval * easeFactor);
+                return { interval: nextInterval, easeFactor: easeFactor + 0.1, isDueNow: false, reviewCount: newReviewCount };
+            }
+        };
+
+        // --- Components ---
+
+        const Navbar = ({ view, setView, goBack }) => {
+            const [isFullscreen, setIsFullscreen] = useState(false);
+            const toggleFullScreen = () => {
+                if (!document.fullscreenElement) { document.documentElement.requestFullscreen().catch(console.log); setIsFullscreen(true); }
+                else { if (document.exitFullscreen) { document.exitFullscreen(); setIsFullscreen(false); } }
+            };
+            useEffect(() => {
+                const handleChange = () => setIsFullscreen(!!document.fullscreenElement);
+                document.addEventListener('fullscreenchange', handleChange);
+                return () => document.removeEventListener('fullscreenchange', handleChange);
+            }, []);
+            const showBack = view.startsWith('group_list') || view === 'study';
+            
+            return (
+                <nav className="bg-indigo-600 text-white shadow-md sticky top-0 z-50 safe-top transition-all duration-300 flex-shrink-0">
+                    <div className="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
+                        <div className="flex items-center space-x-3 font-bold text-lg cursor-pointer hover:opacity-90 transition" onClick={() => setView('home')}>
+                            {showBack ? <button onClick={(e) => {e.stopPropagation(); goBack();}} className="p-1.5 hover:bg-indigo-500 rounded-full transition"><Icon name="ArrowLeft" size={24}/></button> : <Icon name="Book" size={24}/>}
+                            <span className="tracking-wide">考研词汇大师</span>
+                        </div>
+                        <div className="flex space-x-1 sm:space-x-2 items-center">
+                            <button onClick={toggleFullScreen} className="p-2 rounded-full hover:bg-indigo-500 transition hidden sm:block" title="全屏">
+                                {isFullscreen ? <Icon name="Minimize" /> : <Icon name="Maximize" />}
+                            </button>
+                            <div className="h-6 w-px bg-indigo-400 mx-2 hidden sm:block"></div>
+                            <button onClick={() => setView('home')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'home' ? 'bg-indigo-800 shadow-inner' : ''}`} title="首页"><Icon name="Brain" /></button>
+                            <button onClick={() => setView('list')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'list' ? 'bg-indigo-800 shadow-inner' : ''}`} title="列表"><Icon name="List" /></button>
+                            <button onClick={() => setView('import')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'import' ? 'bg-indigo-800 shadow-inner' : ''}`} title="导入"><Icon name="Upload" /></button>
+                            <button onClick={() => setView('settings')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'settings' ? 'bg-indigo-800 shadow-inner' : ''}`} title="设置"><Icon name="Settings" /></button>
+                        </div>
+                    </div>
+                </nav>
+            );
+        };
+
+        const WordListMode = ({ words, setWords }) => {
+            const [search, setSearch] = useState("");
+            const [sortMode, setSortMode] = useState('default');
+            const [sortDesc, setSortDesc] = useState(false);
+            const [showSortMenu, setShowSortMenu] = useState(false);
+            const displayWords = useMemo(() => {
+                let list = words.filter(w => w.word.toLowerCase().includes(search.toLowerCase()) || w.meanings.some(m => m.def.includes(search)));
+                list.sort((a, b) => {
+                    if (sortMode === 'alpha') return a.word.localeCompare(b.word);
+                    else if (sortMode === 'reviews') return (a.stats?.reviewCount || 0) - (b.stats?.reviewCount || 0);
+                    return 0;
+                });
+                if (sortDesc) list.reverse();
+                return list;
+            }, [words, search, sortMode, sortDesc]);
+            const toggleSort = (mode) => { if (sortMode === mode) setSortDesc(!sortDesc); else { setSortMode(mode); setSortDesc(mode === 'reviews'); } setShowSortMenu(false); };
+            const toggleMastery = (wordId, meaningIndex) => { const newWords = [...words]; const idx = newWords.findIndex(w => w.id === wordId); if (idx !== -1) { newWords[idx].meanings[meaningIndex].isMastered = !newWords[idx].meanings[meaningIndex].isMastered; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); } };
+            
+            return (
+                <div className="flex-1 overflow-y-auto custom-scroll p-4 bg-gray-50">
+                    <div className="max-w-6xl mx-auto pb-20">
+                        <div className="sticky top-0 bg-gray-50 pt-2 pb-4 z-40 space-y-2 md:flex md:space-y-0 md:space-x-4 md:items-center">
+                            <div className="relative flex-1">
+                                <input type="text" placeholder="搜索单词或释义..." className="w-full pl-10 pr-4 py-3 rounded-xl shadow-sm border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition" value={search} onChange={e => setSearch(e.target.value)} />
+                                <div className="absolute left-3 top-3.5 text-gray-400"><Icon name="Search" /></div>
+                            </div>
+                            <div className="flex justify-between items-center bg-white p-2 rounded-xl shadow-sm border border-gray-200 text-sm relative md:w-auto">
+                                <span className="text-gray-500 ml-2 whitespace-nowrap font-medium">共 {displayWords.length} 词</span>
+                                <button onClick={() => setShowSortMenu(!showSortMenu)} className="ml-4 flex items-center space-x-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium whitespace-nowrap transition"><Icon name="Sort" size={16} /><span>排序</span></button>
+                                {showSortMenu && (<div className="absolute right-0 top-full mt-2 w-40 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden ring-1 ring-black/5"><button onClick={() => toggleSort('default')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 transition text-gray-700">默认</button><button onClick={() => toggleSort('alpha')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 transition text-gray-700">字母 A-Z</button><button onClick={() => toggleSort('reviews')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 transition text-gray-700">复习次数</button></div>)}
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {displayWords.map((word) => (
+                                <div key={word.id} className="bg-white rounded-xl shadow-sm p-5 hover:shadow-md transition duration-200 border border-gray-100 hover:border-indigo-100 flex flex-col h-full">
+                                    <div className="flex justify-between items-baseline mb-3">
+                                        <div className="flex items-baseline space-x-2 overflow-hidden">
+                                            <h3 className="text-lg font-bold text-gray-900 truncate">{word.word}</h3>
+                                            <span className="text-sm font-mono text-gray-500 truncate">{word.phonetic}</span>
+                                        </div>
+                                        <div className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full whitespace-nowrap font-medium">复习 {word.stats?.reviewCount || 0}</div>
+                                    </div>
+                                    <div className="space-y-2 flex-1">
+                                        {word.meanings.map((m, mIdx) => (
+                                            <div key={mIdx} className="flex items-start group cursor-pointer p-1 -ml-1 rounded hover:bg-gray-50 transition" onClick={() => toggleMastery(word.id, mIdx)}>
+                                                <div className={`mt-0.5 mr-2 flex-shrink-0 transition-colors ${m.isMastered ? 'text-green-500' : 'text-gray-300 group-hover:text-gray-400'}`}><Icon name="Check" size={16} /></div>
+                                                <div className={`text-sm leading-snug break-words ${m.isMastered ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+                                                    <span className="font-semibold mr-1 text-gray-500 text-xs uppercase">{m.pos}</span>{m.def}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const Dashboard = ({ words, setView, setSessionConfig }) => {
+            const stats = useMemo(() => {
+                const counts = { high: 0, medium: 0, low: 0, zero: 0, uncategorized: 0, review: 0 };
+                const now = Date.now();
+                words.forEach(w => {
+                    const cat = w.category || 'uncategorized';
+                    if (['high', 'medium', 'low', 'zero'].includes(cat)) counts[cat]++; else if (!counts[cat]) counts[cat] = 1; else counts[cat]++;
+                    if (w.stats && w.stats.nextReview <= now && w.stats.interval !== 0) counts.review++;
+                });
+                return counts;
+            }, [words]);
+            const standardCats = ['high', 'medium', 'low', 'zero'];
+            const customCats = Object.keys(stats).filter(k => !standardCats.includes(k) && k !== 'review' && k !== 'uncategorized');
+            const openCategory = (category) => { setSessionConfig({ type: 'group_select', category }); setView('group_list'); };
+            const startReview = () => { setSessionConfig({ type: 'review' }); setView('study'); };
+            const Card = ({ title, count, color, onClick, isCustom }) => (
+                <div onClick={onClick} className={`bg-white p-5 rounded-xl shadow-sm border border-gray-100 cursor-pointer transform transition hover:scale-[1.02] hover:shadow-md active:scale-95 relative overflow-hidden group h-32 flex flex-col justify-between`}>
+                    <div className={`absolute top-0 left-0 w-1.5 h-full ${color} transition-all group-hover:w-2`}></div>
+                    <div className="flex justify-between items-start">
+                        <h3 className="font-bold text-gray-800 text-lg truncate pl-2">{title}</h3>
+                        <div className={`text-gray-200 group-hover:text-indigo-100 transition-colors ${isCustom ? 'opacity-70' : ''}`}>{isCustom ? <Icon name="Folder" size={28}/> : <Icon name="Book" size={28}/>}</div>
+                    </div>
+                    <div className="pl-2">
+                        <span className="text-2xl font-bold text-gray-700">{count}</span>
+                        <span className="text-xs text-gray-400 ml-1">词</span>
+                    </div>
+                </div>
+            );
+            return (
+                <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 bg-gray-50">
+                    <div className="max-w-5xl mx-auto space-y-8 pb-10">
+                        {/* 顶部复习卡片 */}
+                        <div onClick={startReview} className="w-full bg-gradient-to-br from-indigo-600 to-violet-600 p-8 rounded-2xl text-white shadow-xl shadow-indigo-200 cursor-pointer transform transition hover:-translate-y-1 hover:shadow-2xl active:scale-[0.99] relative overflow-hidden flex flex-col md:flex-row justify-between items-center group">
+                            <div className="z-10 relative text-center md:text-left">
+                                <h2 className="text-3xl font-bold mb-2 tracking-tight">智能复习计划</h2>
+                                <p className="text-indigo-100 text-lg opacity-90">今日待复习: <span className="font-bold text-white bg-white/20 px-3 py-0.5 rounded-lg ml-1">{stats.review}</span> 个单词</p>
+                            </div>
+                            <div className="mt-4 md:mt-0 bg-white/20 w-20 h-20 rounded-full flex items-center justify-center z-10 relative group-hover:scale-110 transition duration-300 backdrop-blur-sm border border-white/30">
+                                <Icon name="Brain" size={40} className="text-white"/>
+                            </div>
+                            {/* 装饰背景 */}
+                            <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
+                            <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-indigo-900/20 rounded-full blur-2xl"></div>
+                            {stats.review > 0 && <div className="absolute top-6 right-6 w-3 h-3 bg-red-400 rounded-full animate-ping"></div>}
+                        </div>
+
+                        {/* 考频分类 */}
+                        <div>
+                            <h3 className="font-bold text-gray-800 px-1 flex items-center text-lg mb-4"><Icon name="List" size={20} className="mr-2 text-indigo-600"/>核心考频</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-6">
+                                <Card title="高频词" count={stats.high || 0} color="bg-red-500" onClick={() => openCategory('high')} />
+                                <Card title="中频词" count={stats.medium || 0} color="bg-orange-500" onClick={() => openCategory('medium')} />
+                                <Card title="低频词" count={stats.low || 0} color="bg-yellow-500" onClick={() => openCategory('low')} />
+                                <Card title="零频词" count={stats.zero || 0} color="bg-green-500" onClick={() => openCategory('zero')} />
+                                {stats.uncategorized > 0 && <Card title="未分类" count={stats.uncategorized} color="bg-gray-400" onClick={() => openCategory('uncategorized')} />}
+                            </div>
+                        </div>
+
+                        {/* 自定义分组 */}
+                        {customCats.length > 0 && (
+                            <div>
+                                <h3 className="font-bold text-gray-800 px-1 flex items-center text-lg mb-4"><Icon name="Folder" size={20} className="mr-2 text-indigo-600"/>我的分组</h3>
+                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 lg:gap-6">
+                                    {customCats.map(cat => (<Card key={cat} title={cat} count={stats[cat]} color="bg-blue-500" onClick={() => openCategory(cat)} isCustom={true} />))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const GroupList = ({ words, category, setView, setSessionConfig, config }) => {
+            const groups = useMemo(() => {
+                const catWords = words.filter(w => (w.category || 'uncategorized') === category);
+                const groupSize = config.groupSize || 208;
+                const batches = {};
+                catWords.forEach(w => { const batchId = w.importId || 'default'; if (!batches[batchId]) batches[batchId] = []; batches[batchId].push(w); });
+                const result = [];
+                const batchKeys = Object.keys(batches).sort((a, b) => { if (a === 'default') return -1; if (b === 'default') return 1; return parseInt(b.split('-')[1] || 0) - parseInt(a.split('-')[1] || 0); });
+                let globalIndex = 1;
+                batchKeys.forEach(batchId => {
+                    const batchWords = batches[batchId]; const count = Math.ceil(batchWords.length / groupSize);
+                    for(let i=0; i<count; i++) {
+                        const start = i * groupSize; const end = Math.min((i+1) * groupSize, batchWords.length);
+                        const groupWords = batchWords.slice(start, end);
+                        const mastered = groupWords.filter(w => w.stats && w.stats.interval > 0).length;
+                        let batchName = "默认词库";
+                        if (batchId !== 'default') { const ts = parseInt(batchId.split('-')[1]); if (!isNaN(ts)) { const date = new Date(ts); batchName = `${date.getFullYear()}/${date.getMonth()+1}/${date.getDate()} 导入`; } else { batchName = "新批次"; } }
+                        result.push({ index: globalIndex++, batchId, batchIndex: i, batchName, start: start + 1, end, total: groupWords.length, mastered });
+                    }
+                });
+                return result;
+            }, [words, category, config.groupSize]);
+            const labels = { high: "高频词", medium: "中频词", low: "低频词", zero: "零频词", uncategorized: "未分类" };
+            const displayTitle = labels[category] || category;
+            const startGroup = (batchId, batchIndex) => { setSessionConfig({ type: 'group_study', category, batchId, batchIndex }); setView('study'); };
+            
+            return (
+                <div className="flex-1 overflow-y-auto custom-scroll p-4 bg-gray-50">
+                    <div className="max-w-5xl mx-auto pb-20">
+                        <div className="flex items-center mb-6">
+                            <h2 className="text-2xl font-bold text-gray-800 truncate border-l-4 border-indigo-600 pl-3">{displayTitle}</h2>
+                            <span className="ml-3 text-sm text-gray-500 bg-gray-200 px-2 py-0.5 rounded-md">分组背诵模式</span>
+                        </div>
+                        {groups.length === 0 ? 
+                            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl shadow-sm border border-gray-100">
+                                <div className="text-gray-300 mb-4"><Icon name="Book" size={48}/></div>
+                                <div className="text-gray-500">该分类下暂无单词</div>
+                            </div> 
+                        : 
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {groups.map(g => (
+                                <div key={g.index} onClick={() => startGroup(g.batchId, g.batchIndex)} className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:border-indigo-300 hover:shadow-md transition duration-200 flex flex-col group relative overflow-hidden">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div>
+                                            <h3 className="font-bold text-gray-800 text-lg">Group {g.index}</h3>
+                                            <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200 mt-1 inline-block">{g.batchName}</span>
+                                        </div>
+                                        <div className="bg-indigo-50 p-2 rounded-lg text-indigo-500 group-hover:bg-indigo-100 transition"><Icon name="List" size={20}/></div>
+                                    </div>
+                                    <div className="mt-auto">
+                                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                                            <span>进度</span>
+                                            <span className="font-medium">{Math.round((g.mastered/g.total)*100)}%</span>
+                                        </div>
+                                        <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                                            <div className="h-full bg-indigo-500 transition-all duration-500" style={{width: `${(g.mastered/g.total)*100}%`}}></div>
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-2 text-right">{g.mastered} / {g.total} 词</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        }
+                    </div>
+                </div>
+            );
+        };
+
+        const StudySession = ({ words, setWords, sessionConfig, onExit, config }) => {
+            const [queue, setQueue] = useState([]);
+            const [currentIdx, setCurrentIdx] = useState(0);
+            const [isFlipped, setIsFlipped] = useState(false);
+            const [isFinished, setIsFinished] = useState(false);
+            const [isGenerating, setIsGenerating] = useState(false);
+
+            useEffect(() => {
+                const now = Date.now();
+                let q = [];
+                const groupSize = config.groupSize || 208;
+                if (sessionConfig.type === 'review') {
+                    q = words.filter(w => w.stats && w.stats.nextReview <= now && w.stats.interval !== 0);
+                    if(q.length === 0) q = words.filter(w => w.stats && w.stats.interval < 1 && w.stats.interval !== 0);
+                    q = q.sort(() => Math.random() - 0.5).slice(0, 30);
+                } else if (sessionConfig.type === 'group_study') {
+                    const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
+                    const batchId = sessionConfig.batchId;
+                    const batchWords = catWords.filter(w => (w.importId || 'default') === batchId);
+                    const start = sessionConfig.batchIndex * groupSize;
+                    const end = start + groupSize;
+                    const targetGroup = batchWords.slice(start, end);
+                    const newWords = targetGroup.filter(w => !w.stats || w.stats.interval === 0);
+                    const reviewWords = targetGroup.filter(w => w.stats && w.stats.interval !== 0);
+                    q = [...newWords, ...reviewWords];
+                }
+                setQueue(q);
+            }, [sessionConfig]);
+
+            useEffect(() => { if (queue.length > 0 && !isFinished && !isFlipped) { const word = queue[currentIdx]?.word; if (word) { const timer = setTimeout(() => playAudio(word), 300); return () => clearTimeout(timer); } } }, [currentIdx, queue, isFinished]);
+
+            if (queue.length === 0 && !isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full"><div className="bg-green-100 p-6 rounded-full mb-6 text-green-600"><Icon name="Check" size={48}/></div><h2 className="text-2xl font-bold text-gray-800 mb-2">当前任务完成</h2><p className="text-gray-500 mb-8">休息一下，稍后再来！</p><button onClick={onExit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95">返回首页</button></div></div>;
+            if (isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full"><div className="bg-indigo-100 p-6 rounded-full mb-6 text-indigo-600"><Icon name="Sparkles" size={48}/></div><h2 className="text-2xl font-bold text-gray-800 mb-4">本轮学习结束 🎉</h2><button onClick={onExit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95">返回</button></div></div>;
+
+            const currentCard = queue[currentIdx];
+            const handleRating = (rating) => {
+                const word = currentCard;
+                const currentStats = word.stats || { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 };
+                const result = calculateNextReview(rating, currentStats.interval, currentStats.easeFactor, currentStats.reviewCount);
+                const newStats = { interval: result.interval, easeFactor: result.easeFactor, nextReview: Date.now() + (result.interval * 24 * 60 * 60 * 1000), reviewCount: result.reviewCount };
+                const updatedWords = words.map(w => w.id === word.id ? { ...w, stats: newStats } : w);
+                setWords(updatedWords);
+                localStorage.setItem('kaoyan_vocab_list', JSON.stringify(updatedWords));
+                if (result.isDueNow) setQueue(prev => [...prev, { ...word, stats: newStats, isRepeat: true }]);
+                setIsFlipped(false); setTimeout(() => currentIdx + 1 >= queue.length ? setIsFinished(true) : setCurrentIdx(prev => prev + 1), 200);
+            };
+            const toggleMeaningMastery = (e, mIdx) => { e.stopPropagation(); const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], isMastered:!meanings[mIdx].isMastered, _forceShow:false}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); const newWords=[...words]; const idx=newWords.findIndex(w=>w.id===currentCard.id); if(idx!==-1){ newWords[idx]={...newWords[idx], meanings:meanings}; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); } };
+            const toggleForceShow = (mIdx) => { const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], _forceShow:!meanings[mIdx]._forceShow}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); };
+            const generateSentence = async (e, meaningIndex) => {
+                e.stopPropagation(); if (!config.apiKey) { alert("请设置 API Key"); return; } setIsGenerating(true);
+                try {
+                    const prompt = `English example sentence for "${currentCard.word}" meaning "${currentCard.meanings[meaningIndex].def}".`;
+                    let newSentence = "";
+                    if (config.type === 'google') { const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({contents:[{parts:[{text:prompt}]}]}) }); const data = await res.json(); newSentence = data.candidates?.[0]?.content?.parts?.[0]?.text; }
+                    else { let baseUrl = config.baseUrl.replace(/\/$/, ""); if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel") && !baseUrl.includes("lingyiwanwu") && !baseUrl.includes("siliconflow")) baseUrl += "/v1"; const res = await fetch(`${baseUrl}/chat/completions`, { method: 'POST', headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${config.apiKey}`}, body: JSON.stringify({model:config.model, messages:[{role:"user",content:prompt}]}) }); const data = await res.json(); newSentence = data.choices?.[0]?.message?.content; }
+                    if(newSentence) { const s = newSentence.trim().replace(/^["']|["']$/g, ''); const newWords = [...words]; newWords.find(w => w.id === currentCard.id).meanings[meaningIndex].sentence = s; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); const newQueue = [...queue]; newQueue[currentIdx].meanings[meaningIndex].sentence = s; setQueue(newQueue); }
+                } catch(e){ alert(e.message); } finally { setIsGenerating(false); }
+            };
+
+            return (
+                <div className="flex-1 flex flex-col relative bg-gray-100 overflow-hidden">
+                    {/* 顶部进度条 */}
+                    <div className="absolute top-0 left-0 w-full h-1.5 bg-gray-200 z-10">
+                        <div className="h-full bg-indigo-600 transition-all duration-300 ease-out" style={{width: `${(currentIdx / queue.length) * 100}%`}}></div>
+                    </div>
+                    
+                    {/* 退出按钮 - 悬浮在左上角 */}
+                    <button onClick={onExit} className="absolute top-4 left-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title="退出"><Icon name="ArrowLeft" size={24}/></button>
+                    <div className="absolute top-6 right-6 z-20 text-xs font-bold text-gray-400 bg-white/50 px-2 py-1 rounded backdrop-blur border border-white/50 uppercase tracking-wider">{sessionConfig.type === 'review' ? 'Review' : 'Learn'}</div>
+
+                    {/* 卡片容器 - 关键修改：使用 flex-center + 响应式尺寸 */}
+                    <div className="flex-1 flex items-center justify-center p-4 md:p-8 overflow-hidden">
+                        <div className="relative scene w-full max-w-sm md:max-w-3xl aspect-[3/4] md:aspect-[4/3] max-h-[85vh]">
+                            <div className={`card-object ${isFlipped ? 'is-flipped' : ''}`} onClick={() => setIsFlipped(!isFlipped)}>
+                                
+                                {/* 正面 */}
+                                <div className="card-face flex flex-col items-center justify-center p-8 md:p-12 text-center bg-gradient-to-br from-white to-gray-50 border border-white">
+                                    <div className="flex-1 flex flex-col items-center justify-center w-full">
+                                        <h1 className="text-5xl md:text-7xl lg:text-8xl font-black text-gray-800 mb-6 md:mb-10 tracking-tight">{currentCard.word}</h1>
+                                        <div 
+                                            className="flex items-center space-x-3 text-gray-500 bg-white border border-gray-200 shadow-sm px-5 py-2.5 rounded-full cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition transform hover:scale-105" 
+                                            onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}}
+                                        >
+                                            <Icon name="Volume2" size={24} className="md:w-7 md:h-7"/>
+                                            <span className="font-mono text-xl md:text-2xl">{currentCard.phonetic}</span>
+                                        </div>
+                                    </div>
+                                    <div className="mt-auto text-gray-400 text-sm md:text-base animate-pulse font-medium">点击翻转查看释义</div>
+                                </div>
+
+                                {/* 背面 */}
+                                <div className="card-face card-face-back p-0 bg-white">
+                                    {/* 顶部单词栏 */}
+                                    <div className="flex-shrink-0 bg-white/95 backdrop-blur border-b border-gray-100 p-4 md:p-6 flex justify-between items-center z-10 shadow-sm">
+                                        <h2 className="text-2xl md:text-4xl font-bold text-indigo-900">{currentCard.word}</h2>
+                                        <button onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}} className="p-3 bg-indigo-50 rounded-full text-indigo-600 hover:bg-indigo-100 transition"><Icon name="Volume2" size={24}/></button>
+                                    </div>
+                                    
+                                    {/* 中间释义滚动区 */}
+                                    <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 space-y-4 md:space-y-6">
+                                        {currentCard.meanings.map((m, idx) => {
+                                            const isHidden = m.isMastered && !m._forceShow;
+                                            return (
+                                                <div key={idx} className="relative p-5 md:p-6 bg-white rounded-2xl border border-gray-100 shadow-sm transition-all hover:shadow-md hover:border-indigo-100">
+                                                    <div className="flex justify-between items-center mb-3">
+                                                        <span className="text-xs md:text-sm font-bold bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-md uppercase tracking-wide">{m.pos}</span>
+                                                        <button onClick={(e) => toggleMeaningMastery(e, idx)} className={`p-2 rounded-lg transition active:scale-95 ${m.isMastered ? 'text-gray-400 bg-gray-100' : 'text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50'}`}>{m.isMastered ? <Icon name="EyeOff" size={20} /> : <Icon name="Eye" size={20} />}</button>
+                                                    </div>
+                                                    <div className="mb-3 min-h-[1.5rem]">
+                                                        {isHidden ? (
+                                                            <div onClick={(e) => { e.stopPropagation(); toggleForceShow(idx); }} className="bg-gray-50 text-gray-400 text-sm py-4 px-4 rounded-xl cursor-pointer flex items-center justify-center select-none hover:bg-gray-100 transition border border-dashed border-gray-200">
+                                                                <Icon name="EyeOff" size={16} className="mr-2"/> 释义已隐藏 (点击查看)
+                                                            </div>
+                                                        ) : (
+                                                            <div className="text-gray-800 font-medium text-lg md:text-2xl leading-relaxed">{m.def}</div>
+                                                        )}
+                                                    </div>
+                                                    <div className="mt-4 pt-3 border-t border-gray-50">
+                                                        {m.sentence ? 
+                                                            <p className="text-sm md:text-lg text-gray-600 italic bg-gray-50 p-3 rounded-lg border-l-4 border-indigo-200">"{m.sentence}"</p> 
+                                                            : 
+                                                            <button onClick={(e) => generateSentence(e, idx)} className="group flex items-center gap-2 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-all active:scale-95 w-fit">
+                                                                <Icon name="Sparkles" size={16} />
+                                                                <span className="text-xs md:text-sm font-bold whitespace-nowrap">AI 生成例句</span>
+                                                            </button>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                        {/* 垫高底部，防止内容被遮挡 */}
+                                        <div className="h-20"></div> 
+                                    </div>
+
+                                    {/* 底部按钮栏 */}
+                                    <div className="flex-shrink-0 absolute bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 md:p-6 flex space-x-3 md:space-x-6 shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.1)] z-20">
+                                        <button onClick={(e)=>{e.stopPropagation();handleRating(1);}} className="flex-1 btn-press bg-red-50 hover:bg-red-100 text-red-600 py-4 md:py-5 rounded-xl font-bold text-base md:text-lg flex flex-col items-center transition-colors border border-red-100"><span>不认识</span></button>
+                                        <button onClick={(e)=>{e.stopPropagation();handleRating(2);}} className="flex-1 btn-press bg-yellow-50 hover:bg-yellow-100 text-yellow-600 py-4 md:py-5 rounded-xl font-bold text-base md:text-lg flex flex-col items-center transition-colors border border-yellow-100"><span>不熟</span></button>
+                                        <button onClick={(e)=>{e.stopPropagation();handleRating(3);}} className="flex-1 btn-press bg-green-50 hover:bg-green-100 text-green-600 py-4 md:py-5 rounded-xl font-bold text-base md:text-lg flex flex-col items-center transition-colors border border-green-100"><span>认识</span></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ImportExport = ({ setWords, words, setView, config }) => {
+            const [activeTab, setActiveTab] = useState('text');
+            const [textInput, setTextInput] = useState('');
+            const [importMode, setImportMode] = useState('frequency');
+            const [importCategory, setImportCategory] = useState('high');
+            const [customGroupName, setCustomGroupName] = useState('');
+            const [isNewBatch, setIsNewBatch] = useState(false);
+            const [aiInput, setAiInput] = useState('');
+            const [isFetching, setIsFetching] = useState(false);
+            const [fetchProgress, setFetchProgress] = useState({ current: 0, total: 0, success: 0, fail: 0 });
+            const [fetchLogs, setFetchLogs] = useState([]);
+
+            const getTargetCategory = () => { if (importMode === 'frequency') return importCategory; return customGroupName.trim() || `Import ${new Date().toLocaleDateString()}`; };
+            const parseAndImport = () => { 
+                if(!textInput.trim()) return;
+                const targetCat = getTargetCategory(); const segments = textInput.split(/[;\n]+/);
+                let addedCount = 0, mergedCount = 0; let currentWords = JSON.parse(JSON.stringify(words)); let lastWordId = null; 
+                const batchId = isNewBatch ? `batch-${Date.now()}` : 'default';
+                segments.forEach((seg, idx) => {
+                    seg = seg.trim(); if (!seg) return;
+                    const fullWordMatch = seg.match(/^([a-zA-Z\-\s]+?)\s+([a-z]{1,5}\.)\s*(.+)$/); const posMatch = seg.match(/^([a-z]{1,5}\.)\s*(.+)$/);
+                    if (fullWordMatch) {
+                        const rawWord = fullWordMatch[1].trim(); const pos = fullWordMatch[2].trim(); const def = fullWordMatch[3].trim();
+                        const existingIdx = currentWords.findIndex(w => w.word.toLowerCase() === rawWord.toLowerCase());
+                        if (!isNewBatch && existingIdx !== -1) { const existingWord = currentWords[existingIdx]; lastWordId = existingWord.id; if (!existingWord.meanings.some(m => m.pos === pos && m.def === def)) { existingWord.meanings.push({ pos, def, sentence: "", isMastered: false }); mergedCount++; } }
+                        else { const newId = `auto-${Date.now()}-${idx}-${Math.random().toString(36).substr(2,5)}`; const newWord = { id: newId, word: rawWord, phonetic: "", category: targetCat, importId: batchId, meanings: [{ pos, def, sentence: "", isMastered: false }], stats: { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 } }; currentWords.push(newWord); lastWordId = newId; addedCount++; }
+                    } else if (posMatch && lastWordId) { const pos = posMatch[1].trim(); const def = posMatch[2].trim(); const targetWord = currentWords.find(w => w.id === lastWordId); if (targetWord && !targetWord.meanings.some(m => m.pos === pos && m.def === def)) { targetWord.meanings.push({ pos, def, sentence: "", isMastered: false }); mergedCount++; } }
+                });
+                if (addedCount > 0 || mergedCount > 0) { setWords(currentWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords)); alert(`成功！新增${addedCount}, 合并${mergedCount}`); setTextInput(''); } else alert("格式错误");
+            };
+            const fetchWordsFromAI = async () => {
+                if (!config.apiKey) { alert("请配置 Key"); return; } if (!aiInput.trim()) return; const wordList = aiInput.split(/[\s,\n]+/).filter(w => w.trim().match(/^[a-zA-Z\-]+$/)); if(wordList.length===0) return;
+                setIsFetching(true); setFetchProgress({ current: 0, total: wordList.length, success: 0, fail: 0 }); setFetchLogs([]); const targetCat = getTargetCategory(); const batchId = isNewBatch ? `batch-${Date.now()}` : 'default'; const BATCH_SIZE = 5; let currentWords = JSON.parse(JSON.stringify(words)); let successCount = 0; let failCount = 0;
+                for (let i = 0; i < wordList.length; i += BATCH_SIZE) {
+                    const batch = wordList.slice(i, i + BATCH_SIZE); const batchStr = batch.join(", "); const prompt = `考研单词查询JSON:[${batchStr}]`;
+                    try {
+                        let jsonStr=""; if(config.type==='google'){ const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})}); const data=await res.json(); jsonStr=data.candidates?.[0]?.content?.parts?.[0]?.text; } else { let baseUrl=config.baseUrl.replace(/\/$/,""); if(!baseUrl.includes("/v1")&&!baseUrl.includes("aliyuncs")&&!baseUrl.includes("bigmodel")&&!baseUrl.includes("lingyiwanwu")&&!baseUrl.includes("siliconflow"))baseUrl+="/v1"; const res=await fetch(`${baseUrl}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${config.apiKey}`},body:JSON.stringify({model:config.model,messages:[{role:"user",content:prompt}]})}); const data=await res.json(); jsonStr=data.choices?.[0]?.message?.content; }
+                        if(!jsonStr) throw new Error("Empty"); jsonStr=jsonStr.replace(/```json/g,'').replace(/```/g,'').trim(); const parsedBatch=JSON.parse(jsonStr);
+                        if(Array.isArray(parsedBatch)){ parsedBatch.forEach(item=>{ const existIdx=currentWords.findIndex(w=>w.word.toLowerCase()===item.word.toLowerCase()); const meanings=item.meanings.map(m=>({...m,sentence:"",isMastered:false})); if(!isNewBatch && existIdx!==-1){ item.meanings.forEach(nm=>{ if(!currentWords[existIdx].meanings.some(om=>om.pos===nm.pos && om.def===nm.def)) currentWords[existIdx].meanings.push({...nm,sentence:"",isMastered:false}); }); }else{ currentWords.push({id:`ai-${Date.now()}-${Math.random()}`,word:item.word,phonetic:item.phonetic||"",category:targetCat,importId:batchId,meanings,stats:{interval:0,easeFactor:2.5,nextReview:0,reviewCount:0}}); } }); successCount+=batch.length; setFetchLogs(p=>[`✅ ${batchStr}`,...p]); }
+                    } catch(err){ failCount+=batch.length; setFetchLogs(p=>[`❌ ${batchStr}`,...p]); }
+                    setFetchProgress({ current: Math.min(i+BATCH_SIZE, wordList.length), total: wordList.length, success: successCount, fail: failCount }); setWords([...currentWords]); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords));
+                } setIsFetching(false); alert("完成");
+            };
+            const handleFile = (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { try { const parsed = JSON.parse(ev.target.result); if (Array.isArray(parsed)) { if(confirm("覆盖?")) { setWords(parsed); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(parsed)); } } } catch(err) { alert("格式错误"); } }; reader.readAsText(file); };
+            const exportData = () => { const blob = new Blob([JSON.stringify(words, null, 2)], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = "backup.json"; a.click(); };
+
+            return (
+                <div className="flex-1 overflow-y-auto custom-scroll bg-gray-50 p-4 flex justify-center">
+                    <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 h-fit">
+                        <h2 className="text-2xl font-bold mb-6 text-gray-800">导入单词</h2>
+                        <div className="flex mb-6 border-b border-gray-100"><button onClick={() => setActiveTab('ai')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='ai'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>AI 速查</button><button onClick={() => setActiveTab('text')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='text'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>批量粘贴</button><button onClick={() => setActiveTab('file')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='file'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>数据恢复</button></div>
+                        
+                        {(activeTab === 'ai' || activeTab === 'text') && (
+                            <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                                <label className="block text-xs font-bold text-gray-400 mb-3 uppercase tracking-wide">1. 导入目标</label>
+                                <div className="flex space-x-6 mb-4">
+                                    <label className="flex items-center cursor-pointer"><input type="radio" checked={importMode==='frequency'} onChange={()=>setImportMode('frequency')} className="w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"/><span className="ml-2 text-sm font-medium">存入考频</span></label>
+                                    <label className="flex items-center cursor-pointer"><input type="radio" checked={importMode==='group'} onChange={()=>setImportMode('group')} className="w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"/><span className="ml-2 text-sm font-medium">自定义分组</span></label>
+                                </div>
+                                {importMode==='frequency' ? (<div className="grid grid-cols-4 gap-2 mb-4">{['high','medium','low','zero'].map(cat=>(<button key={cat} onClick={()=>setImportCategory(cat)} className={`py-2 text-sm rounded-lg border transition-all ${importCategory===cat?'bg-indigo-600 text-white border-indigo-600 shadow-sm':'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>{cat}</button>))}</div>) : (<div className="mb-4"><input type="text" value={customGroupName} onChange={e=>setCustomGroupName(e.target.value)} placeholder="输入分组名称 (例如: 2025预测)" className="w-full p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"/></div>)}
+                                <label className="flex items-center pt-4 border-t border-gray-200 cursor-pointer"><input type="checkbox" checked={isNewBatch} onChange={e=>setIsNewBatch(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"/><span className="ml-2 text-sm font-bold text-gray-700">独立为新批次 (不合并到旧数据)</span></label>
+                            </div>
+                        )}
+
+                        {activeTab === 'ai' && (<div className="space-y-4"><textarea value={aiInput} onChange={e => setAiInput(e.target.value)} placeholder="请输入单词列表，例如：&#10;apple, banana, cherry&#10;abandon, ability" className="w-full h-40 p-4 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none bg-gray-50 focus:bg-white transition"></textarea>{isFetching ? <div className="text-center text-sm py-3 bg-indigo-50 text-indigo-600 rounded-xl animate-pulse font-medium">AI 正在疯狂抓取中... {fetchProgress.current}/{fetchProgress.total}</div> : <button onClick={fetchWordsFromAI} className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 transition transform active:scale-[0.98]"><Icon name="CloudDownload" size={20}/> 开始智能抓取</button>}</div>)}
+                        {activeTab === 'text' && (<div className="space-y-4"><textarea value={textInput} onChange={e => setTextInput(e.target.value)} placeholder="格式: 单词 词性. 释义&#10;例如: apple n. 苹果" className="w-full h-48 p-4 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none bg-gray-50 focus:bg-white transition"></textarea><button onClick={parseAndImport} className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition transform active:scale-[0.98]">开始导入</button></div>)}
+                        {activeTab === 'file' && (<div className="space-y-4 p-8 border-2 border-dashed border-gray-200 rounded-xl text-center hover:bg-gray-50 transition"><div className="text-gray-400 mb-2"><Icon name="Upload" size={32} className="mx-auto"/></div><input type="file" onChange={handleFile} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"/></div>)}
+                        <div className="mt-10 pt-6 border-t border-gray-100 grid grid-cols-2 gap-4"><button onClick={exportData} className="w-full py-2.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium flex items-center justify-center transition"><Icon name="Download" size={16} className="mr-2"/> 备份数据</button><button onClick={() => {if(confirm('确定要清空所有单词吗？此操作不可恢复！')) { setWords([]); localStorage.removeItem('kaoyan_vocab_list'); }}} className="w-full py-2.5 bg-white border border-red-100 text-red-500 hover:bg-red-50 rounded-lg text-sm font-medium flex items-center justify-center transition"><Icon name="Trash2" size={16} className="mr-2"/> 清空词库</button></div>
+                    </div>
+                </div>
+            );
+        };
+
+        const SettingsPanel = ({ config, setConfig, setView }) => {
+            const [selectedPreset, setSelectedPreset] = useState('deepseek');
+            const [modelList, setModelList] = useState([]);
+            const [modelSearch, setModelSearch] = useState('');
+            const [isFetchingModels, setIsFetchingModels] = useState(false);
+
+            useEffect(() => {
+                const matchedKey = Object.keys(API_PRESETS).find(key => {
+                    const preset = API_PRESETS[key];
+                    return preset.type === config.type && (preset.type === 'google' || config.baseUrl.includes(preset.url));
+                });
+                if (matchedKey) setSelectedPreset(matchedKey); else setSelectedPreset('custom');
+            }, []);
+
+            const handlePresetChange = (key) => {
+                setSelectedPreset(key);
+                const preset = API_PRESETS[key];
+                setConfig(prev => ({ ...prev, type: preset.type, baseUrl: preset.url }));
+                setModelList([]);
+            };
+
+            const fetchModels = async () => {
+                if (!config.apiKey) { alert("请先填写 API Key"); return; }
+                setIsFetchingModels(true);
+                setModelList([]);
+                try {
+                    let fetchedModels = [];
+                    if (config.type === 'google') {
+                        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${config.apiKey}`);
+                        if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+                        const data = await res.json();
+                        if (data.models) fetchedModels = data.models.map(m => m.name.replace(/^models\//, ''));
+                    } else {
+                        let baseUrl = config.baseUrl.replace(/\/$/, "");
+                        if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel") && !baseUrl.includes("lingyiwanwu") && !baseUrl.includes("siliconflow")) baseUrl += "/v1";
+                        const res = await fetch(`${baseUrl}/models`, { headers: { 'Authorization': `Bearer ${config.apiKey}` } });
+                        if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+                        const data = await res.json();
+                        if (data.data && Array.isArray(data.data)) fetchedModels = data.data.map(m => m.id);
+                    }
+                    if (fetchedModels.length > 0) { setModelList(fetchedModels); alert(`成功获取 ${fetchedModels.length} 个模型！`); } 
+                    else alert("未获取到模型列表");
+                } catch (e) { alert(`获取失败: ${e.message}`); } 
+                finally { setIsFetchingModels(false); }
+            };
+
+            const filteredModels = modelList.filter(m => m.toLowerCase().includes(modelSearch.toLowerCase()));
+
+            return (
+                <div className="flex-1 overflow-y-auto custom-scroll bg-gray-50 p-4 flex justify-center">
+                    <div className="w-full max-w-xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 h-fit space-y-6">
+                        <h2 className="text-2xl font-bold border-b border-gray-100 pb-4 text-gray-800">API 设置</h2>
+                        
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">服务商</label>
+                            <div className="relative">
+                                <select value={selectedPreset} onChange={(e) => handlePresetChange(e.target.value)} className="w-full border border-gray-200 p-3 rounded-xl appearance-none bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition">
+                                    {Object.entries(API_PRESETS).map(([key, val]) => (<option key={key} value={key}>{val.name}</option>))}
+                                </select>
+                                <div className="absolute right-3 top-3.5 text-gray-400 pointer-events-none"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+                            </div>
+                        </div>
+
+                        <div className={selectedPreset === 'google' ? 'hidden' : 'block'}>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">API Endpoint (Base URL)</label>
+                            <input value={config.baseUrl} onChange={e => setConfig({...config, baseUrl: e.target.value})} className={`w-full border border-gray-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition ${selectedPreset !== 'custom' ? 'bg-gray-100 text-gray-500' : 'bg-gray-50'}`} disabled={selectedPreset !== 'custom'}/>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">API Key</label>
+                            <input value={config.apiKey} onChange={e => setConfig({...config, apiKey: e.target.value})} type="password" placeholder="sk-..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">单组单词量</label>
+                                <input type="number" value={config.groupSize || 208} onChange={e => setConfig({...config, groupSize: parseInt(e.target.value)||208})} className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition"/>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div className="flex justify-between items-center mb-2">
+                                <label className="block text-sm font-bold text-gray-700">模型名称</label>
+                                <button onClick={fetchModels} disabled={isFetchingModels || !config.apiKey} className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg font-medium hover:bg-indigo-100 transition disabled:opacity-50">{isFetchingModels ? "获取中..." : "获取列表"}</button>
+                            </div>
+                            {modelList.length > 0 && (
+                                <div className="mb-2 border border-gray-200 rounded-xl overflow-hidden">
+                                    <input value={modelSearch} onChange={e => setModelSearch(e.target.value)} placeholder="搜索模型..." className="w-full p-3 text-sm bg-gray-50 border-b border-gray-100 outline-none"/>
+                                    <select onChange={e => setConfig({...config, model: e.target.value})} value={config.model} className="w-full p-2 bg-white text-sm outline-none" size={5}>
+                                        {filteredModels.map(m => <option key={m} value={m} className="p-2 hover:bg-indigo-50 cursor-pointer">{m}</option>)}
+                                    </select>
+                                </div>
+                            )}
+                            <input value={config.model} onChange={e => setConfig({...config, model: e.target.value})} placeholder="例如: gpt-3.5-turbo" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
+                        </div>
+
+                        <button onClick={()=>{ localStorage.setItem('kaoyan_config', JSON.stringify(config)); setView('home'); }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-200 transition transform active:scale-[0.98]">保存并返回</button>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [view, setView] = useState('home');
+            const [words, setWords] = useState([]);
+            const [sessionConfig, setSessionConfig] = useState({}); 
+            const [config, setConfig] = useState({ type: 'openai', baseUrl: 'https://api.deepseek.com', apiKey: '', model: 'deepseek-chat', groupSize: 208 });
+
+            useEffect(() => {
+                const saved = localStorage.getItem('kaoyan_vocab_list');
+                const savedCfg = localStorage.getItem('kaoyan_config');
+                if (saved) setWords(JSON.parse(saved));
+                if (savedCfg) setConfig(JSON.parse(savedCfg));
+                const loader = document.getElementById('loading-spinner');
+                if(loader) loader.parentElement.style.display = 'none';
+            }, []);
+
+            const handleBack = () => {
+                if (view === 'study') {
+                    if (sessionConfig.type === 'group_study') setView('group_list');
+                    else setView('home');
+                } else if (view === 'group_list') {
+                    setView('home');
+                } else {
+                    setView('home');
+                }
+            };
+
+            return (
+                <div className="h-full flex flex-col bg-gray-50">
+                    <Navbar view={view} setView={setView} goBack={handleBack} />
+                    <main className="flex-1 overflow-hidden flex flex-col relative">
+                        {view === 'home' && <Dashboard words={words} setView={setView} setSessionConfig={setSessionConfig} />}
+                        {view === 'group_list' && <GroupList words={words} category={sessionConfig.category} setView={setView} setSessionConfig={setSessionConfig} config={config} />}
+                        {view === 'study' && <StudySession words={words} setWords={setWords} sessionConfig={sessionConfig} onExit={handleBack} config={config} />}
+                        {view === 'list' && <WordListMode words={words} setWords={setWords} />}
+                        {view === 'import' && <ImportExport setWords={setWords} words={words} setView={setView} config={config} />}
+                        {view === 'settings' && <SettingsPanel config={config} setConfig={setConfig} setView={setView} />}
+                    </main>
+                </div>
+            );
+        };
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
