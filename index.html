@@ -560,6 +560,29 @@
                 const newWords = words.map(w => idsToMove.includes(w.id) ? { ...w, category: targetCat } : w);
                 setWords(newWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
+                setMoveModal({ open: false, targetGroupWords: [] });
+                alert("转移成功！");
+            };
+
+            const openEditModal = (e, batchId, currentName, currentDesc) => {
+                e.stopPropagation();
+                const isDefaultName = currentName.includes("导入") || currentName === "默认词库" || currentName === "新批次";
+                setEditModal({ open: true, batchId, currentName: isDefaultName ? '' : currentName, currentDesc: currentDesc || '' });
+            };
+
+            const saveGroupInfo = () => {
+                const newMeta = { ...groupMeta, [editModal.batchId]: { name: editModal.currentName.trim(), desc: editModal.currentDesc.trim() } };
+                setGroupMeta(newMeta);
+                localStorage.setItem('kaoyan_group_meta', JSON.stringify(newMeta));
+                setEditModal({ open: false, batchId: '', currentName: '', currentDesc: '' });
+            };
+
+            return (
+                <div className="flex-1 overflow-y-auto custom-scroll p-4 bg-gray-50 relative">
+                    <div className="max-w-5xl mx-auto pb-20">
+                        <div className="flex items-center mb-6">
+                            <h2 className="text-2xl font-bold text-gray-800 truncate border-l-4 border-indigo-600 pl-3">{displayTitle}</h2>
+                            <span className="ml-3 text-sm text-gray-500 bg-gray-200 px-2 py-0.5 rounded-md">分组管理</span>
 const GroupList = ({ words, setWords, category, setView, setSessionConfig, config }) => {
             const [moveModal, setMoveModal] = useState({ open: false, targetGroupWords: [] });
             const [editModal, setEditModal] = useState({ open: false, batchId: '', currentName: '', currentDesc: '' });
@@ -733,7 +756,6 @@ const GroupList = ({ words, setWords, category, setView, setSessionConfig, confi
                 </div>
             );
         };
-
 const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
             const [queue, setQueue] = useState([]);
             const [currentIdx, setCurrentIdx] = useState(0);
