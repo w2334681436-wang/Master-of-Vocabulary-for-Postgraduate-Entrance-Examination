@@ -281,7 +281,16 @@
 
         // --- Components ---
 
-        const Navbar = ({ view, setView }) => {
+       const Navbar = ({ view, setView }) => {
+            // 独立的导航栏全屏逻辑
+            const toggleFullscreen = () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(e => console.log(e));
+                } else {
+                    if (document.exitFullscreen) document.exitFullscreen();
+                }
+            };
+
             return (
                 <nav className="bg-indigo-600 text-white shadow-md sticky top-0 z-50 safe-top transition-all duration-300 flex-shrink-0">
                     <div className="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
@@ -292,6 +301,11 @@
                             </div>
                         </div>
                         <div className="flex space-x-1 items-center">
+                            {/* 🔥 新增：在这里加了一个全屏按钮 */}
+                            <button onClick={toggleFullscreen} className="p-2 rounded-lg hover:bg-indigo-500 transition" title="全屏/退出">
+                                <Icon name="Maximize" />
+                            </button>
+                            {/* 原有的按钮保持不变 */}
                             <button onClick={() => setView('home')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'home' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Brain" /></button>
                             <button onClick={() => setView('list')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'list' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="List" /></button>
                             <button onClick={() => setView('import')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'import' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Upload" /></button>
