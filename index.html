@@ -152,7 +152,7 @@
             }
         };
 
-   const WordChat = ({ word, onClose, config }) => {
+  const WordChat = ({ word, onClose, config }) => {
             const [messages, setMessages] = useState([]);
             const [input, setInput] = useState("");
             const [isLoading, setIsLoading] = useState(false);
@@ -286,10 +286,8 @@
             };
 
             return (
-                // 🔥 核心修改：布局逻辑重写
-                // Mobile: fixed inset-0 (全屏)
-                // Tablet/PC (md): 居中弹窗，宽度 90vw (最大 4xl), 高度 85vh
-                <div className="fixed inset-0 z-[60] flex flex-col bg-white md:fixed md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[90vw] md:max-w-4xl md:h-[85vh] md:rounded-2xl md:shadow-2xl md:border md:border-gray-200 overflow-hidden animate-slide-up">
+                // 🔥 核心修改：将 animate-slide-up (平移) 替换为 animate-fade-in (淡入)
+                <div className="fixed inset-0 z-[60] flex flex-col bg-white md:fixed md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[90vw] md:max-w-4xl md:h-[85vh] md:rounded-2xl md:shadow-2xl md:border md:border-gray-200 overflow-hidden animate-fade-in">
                     <div className="flex justify-between items-center p-4 border-b bg-white z-10 shadow-sm flex-shrink-0">
                         <div className="flex flex-col">
                             <h3 className="font-bold text-lg text-gray-800 flex items-center">{word} <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded">AI 私教</span></h3>
@@ -312,9 +310,7 @@
                     <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 bg-gray-50 custom-scroll" onClick={()=>setShowColorPicker(false)}>
                         {messages.map((msg, idx) => (
                             <div key={idx} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                {/* 🔥 修改：气泡最大宽度调整，防止在大屏上太长，但在手机上铺满 */}
                                 <div className={`flex flex-col max-w-[95%] md:max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                    {/* 🔥 修改：添加 break-words 和 whitespace-pre-wrap 确保文字和代码块自动换行，绝不出现横向滚动条 */}
                                     <div className={`p-3.5 md:p-5 rounded-2xl text-sm md:text-base leading-relaxed shadow-sm relative group break-words whitespace-pre-wrap ${msg.role === 'user' ? 'bg-white text-gray-800 border border-gray-100 rounded-tr-none' : `${bubbleColor} text-white rounded-tl-none markdown-body`} ${msg.role === 'error' ? 'bg-red-50 text-red-600 border-red-200' : ''}`}>
                                         {msg.role === 'assistant' ? <div dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }} /> : msg.content}
                                         {msg.role === 'assistant' && msg.content !== '...' && (
