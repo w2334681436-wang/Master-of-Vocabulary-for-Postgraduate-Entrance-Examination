@@ -499,11 +499,15 @@
             );
         };
 
+        => { setSessionConfig({ type: 'group_study', category, batchId, batchIndex }); setView('study'); };
+
         const GroupList = ({ words, setWords, category, setView, setSessionConfig, config }) => {
             const [moveModal, setMoveModal] = useState({ open: false, targetGroupWords: [] });
             const [editModal, setEditModal] = useState({ open: false, batchId: '', currentName: '', currentDesc: '' });
             const [customTarget, setCustomTarget] = useState('');
             const [groupMeta, setGroupMeta] = useState({});
+            
+            const [storyModal, setStoryModal] = useState({ open: false, loading: false, content: '', batchName: '' });
 
             useEffect(() => {
                 try {
@@ -511,6 +515,73 @@
                     if (savedMeta) setGroupMeta(JSON.parse(savedMeta));
                 } catch (e) { console.error("加载分组信息失败", e); }
             }, []);
+
+            // 🔥 核心逻辑升级：只针对“难词”生成串烧
+            const generateStory = async (groupWords, batchName) => {
+                if (!config.apiKey) return alert("请先在设置页配置 API Key！");
+                
+                // 🕵️‍♂️ 智能筛选：剔除已掌握(绿色)单词，只保留生词(红)和不熟(黄)
+                // 判定标准：没有复习数据，或者复习间隔 <= 1 天
+                const hardWords = groupWords.filter(w => !w.stats || w.stats.interval <= 1);
+                
+                if (hardWords.length === 0) {
+                    return alert("🎉 太强了！这组单词你已经全部【熟练掌握】，无需生成故事。\n\n请去攻克其他分组吧！");
+                }
+
+                const targetWords = hardWords.map(w => w.word).join(', ');
+                // 标题会显示这次攻克了多少个词
+                setStoryModal({ open: true, loading: true, content: '', batchName: `${batchName} · 攻克 ${hardWords.length} 难词` });
+
+                const prompt = `你是一位考研英语命题专家。请使用以下【生词/难词列表】：[${targetWords}]，编写一篇逻辑连贯、学术风格的短文（约 150-200 词）。
+                
+                要求：
+                1. **语境融合**：必须强制包含列表中的所有单词，这是为了帮助学生在语境中记忆这些他还没掌握的词。文风模仿《经济学人》。
+                2. **高亮显示**：在文章中出现这些单词时，必须使用 Markdown 的加粗格式（例如 **word**）。
+                3. **中文翻译**：在英文文章结束后，请提供一段流畅的中文全文翻译。
+                4. **排版**：使用 Markdown 格式。`;
+
+                try {
+                    let fullText = "";
+                    let baseUrl = config.baseUrl.replace(/\/$/, "");
+                    if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel")) baseUrl += "/v1";
+
+                    const response = await fetch(`${baseUrl}/chat/completions`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${config.apiKey}` },
+                        body: JSON.stringify({ 
+                            model: config.model, 
+                            messages: [{ role: "user", content: prompt }],
+                            stream: true 
+                        })
+                    });
+
+                    if (!response.ok) throw new Error("API 请求失败");
+
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder("utf-8");
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split("\n");
+                        for (const line of lines) {
+                            if (line.startsWith("data: ")) {
+                                const data = line.slice(6);
+                                if (data === "[DONE]") break;
+                                try {
+                                    const json = JSON.parse(data);
+                                    const delta = json.choices[0]?.delta?.content || "";
+                                    fullText += delta;
+                                    setStoryModal(prev => ({ ...prev, loading: false, content: fullText }));
+                                } catch (e) { }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    setStoryModal(prev => ({ ...prev, loading: false, content: "**生成失败**：请检查网络或 API Key。\n错误信息：" + e.message }));
+                }
+            };
 
             const groups = useMemo(() => {
                 const catWords = words.filter(w => (w.category || 'uncategorized') === category);
@@ -527,12 +598,8 @@
                         const start = i * groupSize; const end = Math.min((i+1) * groupSize, batchWords.length);
                         const groupWords = batchWords.slice(start, end);
                         
-                        // 🔥 核心修改：区分三种状态
-                        // Green (熟练): interval > 1 天
                         const green = groupWords.filter(w => w.stats && w.stats.interval > 1).length;
-                        // Yellow (在学/不熟): interval > 0 但 <= 1 天 (刚刚背过或者选了不熟)
                         const yellow = groupWords.filter(w => w.stats && w.stats.interval > 0 && w.stats.interval <= 1).length;
-                        // Red (生词/重置): interval == 0
                         const red = groupWords.length - green - yellow;
 
                         const meta = groupMeta[batchId] || {};
@@ -552,9 +619,7 @@
                             start: start + 1, 
                             end, 
                             total: groupWords.length, 
-                            green, 
-                            yellow, 
-                            red,
+                            green, yellow, red,
                             words: groupWords 
                         });
                     }
@@ -617,25 +682,23 @@
                                             <h3 className="font-bold text-gray-800 text-lg line-clamp-1" title={g.batchName}>{g.batchName}</h3>
                                             <div className="flex items-center mt-1 space-x-2"><span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200">Group {g.index}</span></div>
                                         </div>
-                                        <div className="flex space-x-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                            <button onClick={(e) => openEditModal(e, g.batchId, g.batchName, g.desc)} className="p-1.5 bg-gray-50 text-gray-600 rounded hover:bg-indigo-50 hover:text-indigo-600 transition" title="编辑信息"><Icon name="Edit" size={16}/></button>
-                                            <button onClick={(e) => openMoveModal(e, g.words)} className="p-1.5 bg-blue-50 text-blue-500 rounded hover:bg-blue-100 transition" title="转移分组"><Icon name="Move" size={16}/></button>
-                                            <button onClick={(e) => handleDeleteGroup(e, g.words)} className="p-1.5 bg-red-50 text-red-500 rounded hover:bg-red-100 transition" title="删除分组"><Icon name="Trash2" size={16}/></button>
+                                        <div className="flex space-x-1">
+                                            {/* 🔥 智能按钮：只在有生词时高亮 */}
+                                            <button onClick={(e) => { e.stopPropagation(); generateStory(g.words, g.batchName); }} className={`p-1.5 rounded transition ${g.green === g.total ? 'bg-gray-100 text-gray-400' : 'bg-amber-50 text-amber-600 hover:bg-amber-100 animate-pulse'}`} title={g.green === g.total ? "已全部掌握" : "攻克生词"}><Icon name="Sparkles" size={16}/></button>
+                                            <button onClick={(e) => openEditModal(e, g.batchId, g.batchName, g.desc)} className="p-1.5 bg-gray-50 text-gray-600 rounded hover:bg-indigo-50 hover:text-indigo-600 transition" title="编辑"><Icon name="Edit" size={16}/></button>
+                                            <button onClick={(e) => openMoveModal(e, g.words)} className="p-1.5 bg-blue-50 text-blue-500 rounded hover:bg-blue-100 transition" title="转移"><Icon name="Move" size={16}/></button>
+                                            <button onClick={(e) => handleDeleteGroup(e, g.words)} className="p-1.5 bg-red-50 text-red-500 rounded hover:bg-red-100 transition" title="删除"><Icon name="Trash2" size={16}/></button>
                                         </div>
                                     </div>
                                     <div className="mb-3 flex-1">{g.desc ? (<p className="text-xs text-gray-500 bg-gray-50 p-2 rounded border border-gray-100 line-clamp-2">{g.desc}</p>) : (<p className="text-xs text-gray-300 italic py-2">暂无备注...</p>)}</div>
                                     <div className="mt-auto">
-                                        {/* 🔥 核心修改：三色进度条 UI */}
                                         <div className="flex justify-between text-xs text-gray-500 mb-1">
                                             <span>进度</span>
                                             <span className="font-medium text-indigo-600">{Math.round(((g.green + g.yellow)/g.total)*100)}%</span>
                                         </div>
                                         <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden flex">
-                                            {/* 熟练 (绿) */}
                                             <div className="h-full bg-emerald-500 transition-all duration-500" style={{width: `${(g.green/g.total)*100}%`}}></div>
-                                            {/* 在学 (黄) */}
                                             <div className="h-full bg-amber-400 transition-all duration-500" style={{width: `${(g.yellow/g.total)*100}%`}}></div>
-                                            {/* 生词 (红/灰) - 这里留白或者用淡红色，通常用底色即可，这里显式加一个红色 */}
                                             <div className="h-full bg-red-100" style={{width: `${(g.red/g.total)*100}%`}}></div>
                                         </div>
                                         <div className="flex justify-between mt-2 text-[10px] text-gray-400 font-mono">
@@ -649,6 +712,30 @@
                         </div>
                         }
                     </div>
+
+                    {storyModal.open && (
+                        <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setStoryModal({ ...storyModal, open: false })}>
+                            <div className="bg-white w-full max-w-2xl max-h-[80vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                                <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-amber-50">
+                                    <h3 className="font-bold text-amber-800 flex items-center"><span className="mr-2">✨</span> {storyModal.batchName}</h3>
+                                    <button onClick={() => setStoryModal({ ...storyModal, open: false })} className="p-2 hover:bg-amber-100 rounded-full text-amber-800"><Icon name="X" size={20} /></button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-6 custom-scroll bg-white">
+                                    {storyModal.loading && !storyModal.content && (
+                                        <div className="flex flex-col items-center justify-center py-10 space-y-4">
+                                            <div className="w-10 h-10 border-4 border-amber-200 border-t-amber-500 rounded-full animate-spin"></div>
+                                            <p className="text-gray-500 text-sm animate-pulse">正在抓取生词并编织故事，请稍候...</p>
+                                        </div>
+                                    )}
+                                    <div className="markdown-body text-gray-800 leading-relaxed space-y-4" dangerouslySetInnerHTML={{ __html: marked.parse(storyModal.content) }} />
+                                </div>
+                                <div className="p-4 border-t border-gray-100 bg-gray-50 text-right">
+                                    <button onClick={() => setStoryModal({ ...storyModal, open: false })} className="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl font-bold transition">关闭</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {moveModal.open && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setMoveModal({open:false, targetGroupWords:[]})}>
                             <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -672,8 +759,6 @@
                 </div>
             );
         };
-                
-            
                         
 
 const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
