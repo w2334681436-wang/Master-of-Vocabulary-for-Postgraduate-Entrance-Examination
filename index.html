@@ -19,30 +19,37 @@
     <script src="https://cdn.staticfile.net/lz-string/1.4.4/lz-string.min.js"></script>
 
     <style>
+        /* 全局样式与字体 */
         body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; user-select: none; }
+        
+        /* 3D 卡片翻转效果 */
         .scene { perspective: 1200px; width: 100%; height: 100%; }
         .card-object { width: 100%; height: 100%; position: relative; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1); transform-style: preserve-3d; cursor: pointer; }
         .is-flipped { transform: rotateY(180deg); }
         .card-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); display: flex; flex-direction: column; background-color: white; overflow: hidden; }
-        @media (min-width: 768px) { .card-face { box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); } }
         .card-face-back { transform: rotateY(180deg); }
-        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        
+        /* 滚动条隐藏与点击态 */
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
         .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
         .btn-press:active { transform: scale(0.96); transition: transform 0.1s; }
         .safe-top { padding-top: env(safe-area-inset-top); }
         .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
         
+        /* Markdown 内容样式 */
         .markdown-body p { margin-bottom: 0.5em; }
         .markdown-body strong { color: inherit; font-weight: 700; }
         .markdown-body ul { list-style-type: disc; padding-left: 1.2em; margin-bottom: 0.5em; }
         .markdown-body ol { list-style-type: decimal; padding-left: 1.2em; margin-bottom: 0.5em; }
         .markdown-body code { background-color: rgba(0,0,0,0.05); padding: 0.1em 0.3em; border-radius: 3px; font-family: monospace; }
         
+        /* 动画 */
         @keyframes slide-up { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .animate-slide-up { animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
         @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
         .animate-fade-in { animation: fade-in 0.2s ease-out; }
+        @keyframes spin { 0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);} }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-900 h-screen overflow-hidden flex flex-col">
@@ -51,14 +58,10 @@
             <div style="width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top-color: #4f46e5; border-radius: 50%; animation: spin 1s linear infinite;"></div>
             <p style="margin-top: 15px; color: #666; font-size: 14px;">资源加载中...</p>
         </div>
-        <style>@keyframes spin { 0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);} }</style>
     </div>
 
     <script>
-        window.onerror = function(msg, url, line, col, error) {
-            var root = document.getElementById('root');
-            root.innerHTML = '<div style="padding:20px;text-align:center;color:red;"><h3>发生错误</h3><p>'+msg+'</p><p>Line: '+line+'</p></div>';
-        };
+        // PWA Service Worker 注册
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW fail', err));
@@ -69,9 +72,9 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
+        // --- Icons (居中修复版) ---
         const Icons = {
             Book: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
-            CloudCheck: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 15l2 2 4-4"/><path d="M19 17a5 5 0 0 0 0-10c-5.523 0-10 4.477-10 10"/></svg>,
             Brain: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>,
             List: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>,
             Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>,
@@ -81,6 +84,8 @@
             Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
             Trash2: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>,
             ArrowLeft: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>,
+            Maximize: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>,
+            Minimize: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>,
             CloudDownload: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></svg>,
             X: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
             Folder: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>,
@@ -93,9 +98,7 @@
             Volume2: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>,
             Eye: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
             EyeOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>,
-            Sparkles: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>,
-            Copy: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
-            ClipboardCheck: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="m9 14 2 2 4-4"/></svg>
+            Sparkles: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
         };
 
         const Icon = ({ name, size = 20, className = "" }) => {
@@ -115,18 +118,17 @@
             "custom": { name: "自定义 (OpenAI兼容)", type: "openai", url: "" }
         };
 
-       const playAudio = (text) => {
+        const playAudio = (text) => {
             if (text.includes(' ') || text.length > 20) {
                 if ('speechSynthesis' in window) {
                     window.speechSynthesis.cancel();
                     const u = new SpeechSynthesisUtterance(text);
-                    u.lang = 'en-US';
-                    u.rate = 0.9;
+                    u.lang = 'en-US'; u.rate = 0.9;
                     window.speechSynthesis.speak(u);
                 }
             } else {
                 const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(text)}&type=2`);
-                audio.play().catch(e => {
+                audio.play().catch(() => {
                     if ('speechSynthesis' in window) {
                         const u = new SpeechSynthesisUtterance(text);
                         u.lang = 'en-US';
@@ -139,12 +141,10 @@
         const calculateNextReview = (rating, currentInterval, easeFactor, currentReviewCount) => {
             let nextInterval, nextEaseFactor = easeFactor;
             const newReviewCount = (currentReviewCount || 0) + 1;
-            if (rating === 1) { 
-                return { interval: 0, easeFactor: Math.max(1.3, easeFactor - 0.2), isDueNow: true, reviewCount: newReviewCount };
-            } else if (rating === 2) { 
-                return { interval: 0.5, easeFactor: Math.max(1.3, easeFactor - 0.15), isDueNow: true, reviewCount: newReviewCount }; 
-            } else { 
-                if (currentInterval === 0) nextInterval = 1; 
+            if (rating === 1) return { interval: 0, easeFactor: Math.max(1.3, easeFactor - 0.2), isDueNow: true, reviewCount: newReviewCount };
+            else if (rating === 2) return { interval: 0.5, easeFactor: Math.max(1.3, easeFactor - 0.15), isDueNow: true, reviewCount: newReviewCount };
+            else {
+                if (currentInterval === 0) nextInterval = 1;
                 else if (currentInterval === 1) nextInterval = 3;
                 else nextInterval = Math.round(currentInterval * easeFactor);
                 return { interval: nextInterval, easeFactor: easeFactor + 0.1, isDueNow: false, reviewCount: newReviewCount };
@@ -159,25 +159,12 @@
             const [bubbleColor, setBubbleColor] = useState("bg-indigo-600");
             const [showColorPicker, setShowColorPicker] = useState(false);
             const messagesEndRef = useRef(null);
-
-            const colors = [
-                { name: "Indigo", class: "bg-indigo-600" },
-                { name: "Pink", class: "bg-pink-500" },
-                { name: "Green", class: "bg-emerald-500" },
-                { name: "Blue", class: "bg-blue-500" },
-                { name: "Orange", class: "bg-orange-500" },
-                { name: "Black", class: "bg-gray-800" }
-            ];
+            const colors = [{ name: "Indigo", class: "bg-indigo-600" }, { name: "Pink", class: "bg-pink-500" }, { name: "Green", class: "bg-emerald-500" }, { name: "Blue", class: "bg-blue-500" }, { name: "Orange", class: "bg-orange-500" }, { name: "Black", class: "bg-gray-800" }];
 
             const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
             useEffect(() => { scrollToBottom(); }, [messages]);
-
             useEffect(() => {
-                const initialMsg = {
-                    role: "assistant",
-                    content: `Hi! 我是你的专属 AI 私教。\n我们今天要死磕的单词是： **${word}**。\n\n你可以切换上方模式：\n⚡ **快速**：简单通俗讲解\n📖 **深度**：考研真题考法\n👄 **口语**：纯英对话练听力`
-                };
-                setMessages([initialMsg]);
+                setMessages([{ role: "assistant", content: `Hi! 我是你的专属 AI 私教。\n我们今天要死磕的单词是： **${word}**。\n\n你可以切换上方模式：\n⚡ **快速**：简单通俗讲解\n📖 **深度**：考研真题考法\n👄 **口语**：纯英对话练听力` }]);
                 handleSend(null, `请用通俗易懂、生活化的场景（像讲故事一样）讲解单词 "${word}"。拆分为：1.作为名词/动词的核心含义；2.给出一个容易记住的场景例子；3.总结记忆点。使用 Markdown 格式，重点加粗。`);
             }, []);
 
@@ -185,13 +172,8 @@
                 if (e) e.preventDefault();
                 const content = manualContent || input.trim();
                 if (!content || isLoading) return;
-
-                if (!manualContent) {
-                    setMessages(prev => [...prev, { role: "user", content }]);
-                    setInput("");
-                }
+                if (!manualContent) { setMessages(prev => [...prev, { role: "user", content }]); setInput(""); }
                 setIsLoading(true);
-
                 let systemPrompt = "";
                 if (thinkMode === 'oral') systemPrompt = "You are a friendly American English tutor. Speak ONLY in English. Keep your sentences simple, clear, and encouraging. Correct the user's grammar gently if needed. Engage in a conversation using the target word.";
                 else if (thinkMode === 'deep') systemPrompt = "你是一位严肃的考研英语命题组专家。请从词源词根、熟词僻义、历年真题考法、易混词辨析这四个维度进行深度解析。必须使用 Markdown 格式，关键点加粗。";
@@ -200,17 +182,10 @@
                 try {
                     const apiMessages = [{ role: "system", content: systemPrompt }, ...messages.filter(m => m.role !== 'error' && m.content !== '...'), { role: "user", content }];
                     setMessages(prev => [...prev, { role: "assistant", content: "..." }]);
-                    
                     let baseUrl = config.baseUrl.replace(/\/$/, "");
-                    if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel") && !baseUrl.includes("lingyiwanwu")) baseUrl += "/v1";
-
-                    const response = await fetch(`${baseUrl}/chat/completions`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${config.apiKey}` },
-                        body: JSON.stringify({ model: config.model, messages: apiMessages, stream: true })
-                    });
+                    if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel")) baseUrl += "/v1";
+                    const response = await fetch(`${baseUrl}/chat/completions`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${config.apiKey}` }, body: JSON.stringify({ model: config.model, messages: apiMessages, stream: true }) });
                     if (!response.ok) throw new Error("API 请求失败");
-                    
                     const reader = response.body.getReader();
                     const decoder = new TextDecoder("utf-8");
                     let fullText = "";
@@ -223,12 +198,7 @@
                             if (line.startsWith("data: ")) {
                                 const data = line.slice(6);
                                 if (data === "[DONE]") break;
-                                try {
-                                    const json = JSON.parse(data);
-                                    const delta = json.choices[0]?.delta?.content || "";
-                                    fullText += delta;
-                                    setMessages(prev => { const newMsgs = [...prev]; newMsgs[newMsgs.length - 1] = { role: "assistant", content: fullText }; return newMsgs; });
-                                } catch (e) { }
+                                try { const json = JSON.parse(data); const delta = json.choices[0]?.delta?.content || ""; fullText += delta; setMessages(prev => { const newMsgs = [...prev]; newMsgs[newMsgs.length - 1] = { role: "assistant", content: fullText }; return newMsgs; }); } catch (e) { }
                             }
                         }
                     }
@@ -241,120 +211,77 @@
                         <div className="flex flex-col">
                             <h3 className="font-bold text-lg text-gray-800 flex items-center">{word} <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded">AI 私教</span></h3>
                             <div className="flex gap-2 mt-2">
-                                <button onClick={() => setThinkMode('fast')} className={`px-2 py-1 text-xs rounded-lg transition border ${thinkMode==='fast' ? 'bg-indigo-50 text-indigo-600 border-indigo-200 font-bold' : 'text-gray-500 border-transparent'}`}>⚡ 快速理解</button>
-                                <button onClick={() => setThinkMode('deep')} className={`px-2 py-1 text-xs rounded-lg transition border ${thinkMode==='deep' ? 'bg-indigo-50 text-indigo-600 border-indigo-200 font-bold' : 'text-gray-500 border-transparent'}`}>📖 深度考研</button>
-                                <button onClick={() => setThinkMode('oral')} className={`px-2 py-1 text-xs rounded-lg transition border ${thinkMode==='oral' ? 'bg-orange-50 text-orange-600 border-orange-200 font-bold' : 'text-gray-500 border-transparent'}`}>👄 口语对练</button>
+                                <button onClick={() => setThinkMode('fast')} className={`px-2 py-1 text-xs rounded-lg transition border ${thinkMode==='fast' ? 'bg-indigo-50 text-indigo-600 border-indigo-200 font-bold' : 'text-gray-500 border-transparent'}`}>⚡ 快速</button>
+                                <button onClick={() => setThinkMode('deep')} className={`px-2 py-1 text-xs rounded-lg transition border ${thinkMode==='deep' ? 'bg-indigo-50 text-indigo-600 border-indigo-200 font-bold' : 'text-gray-500 border-transparent'}`}>📖 深度</button>
+                                <button onClick={() => setThinkMode('oral')} className={`px-2 py-1 text-xs rounded-lg transition border ${thinkMode==='oral' ? 'bg-orange-50 text-orange-600 border-orange-200 font-bold' : 'text-gray-500 border-transparent'}`}>👄 口语</button>
                             </div>
                         </div>
                         <div className="flex items-center gap-1">
                             <button onClick={()=>setShowColorPicker(!showColorPicker)} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 relative"><Icon name="Palette" size={20}/></button>
-                            {showColorPicker && (
-                                <div className="absolute right-14 top-16 bg-white shadow-xl border rounded-lg p-2 grid grid-cols-3 gap-2 w-32 z-50">
-                                    {colors.map(c => (<div key={c.name} onClick={()=>setBubbleColor(c.class)} className={`w-6 h-6 rounded-full cursor-pointer border border-gray-100 ${c.class}`}></div>))}
-                                </div>
-                            )}
+                            {showColorPicker && (<div className="absolute right-14 top-16 bg-white shadow-xl border rounded-lg p-2 grid grid-cols-3 gap-2 w-32 z-50">{colors.map(c => (<div key={c.name} onClick={()=>setBubbleColor(c.class)} className={`w-6 h-6 rounded-full cursor-pointer border border-gray-100 ${c.class}`}></div>))}</div>)}
                             <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-400"><Icon name="X" size={24}/></button>
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-5 bg-gray-50 custom-scroll" onClick={()=>setShowColorPicker(false)}>
-                        {messages.map((msg, idx) => (
-                            <div key={idx} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`flex flex-col max-w-[90%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                    <div className={`p-3.5 rounded-2xl text-sm md:text-base leading-relaxed shadow-sm relative group ${msg.role === 'user' ? 'bg-white text-gray-800 border border-gray-100 rounded-tr-none' : `${bubbleColor} text-white rounded-tl-none markdown-body`} ${msg.role === 'error' ? 'bg-red-50 text-red-600 border-red-200' : ''}`}>
-                                        {msg.role === 'assistant' ? <div dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }} /> : msg.content}
-                                        {msg.role === 'assistant' && msg.content !== '...' && (
-                                            <button onClick={(e) => {e.stopPropagation(); playAudio(msg.content.replace(/[\*\#]/g, ''));}} className="absolute -right-8 bottom-0 p-1.5 text-gray-400 hover:text-indigo-600 bg-white/50 rounded-full hover:bg-white transition shadow-sm"><Icon name="Volume2" size={16}/></button>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+                        {messages.map((msg, idx) => (<div key={idx} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`flex flex-col max-w-[90%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}><div className={`p-3.5 rounded-2xl text-sm md:text-base leading-relaxed shadow-sm relative group ${msg.role === 'user' ? 'bg-white text-gray-800 border border-gray-100 rounded-tr-none' : `${bubbleColor} text-white rounded-tl-none markdown-body`} ${msg.role === 'error' ? 'bg-red-50 text-red-600 border-red-200' : ''}`}>{msg.role === 'assistant' ? <div dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }} /> : msg.content}{msg.role === 'assistant' && msg.content !== '...' && (<button onClick={(e) => {e.stopPropagation(); playAudio(msg.content.replace(/[\*\#]/g, ''));}} className="absolute -right-8 bottom-0 p-1.5 text-gray-400 hover:text-indigo-600 bg-white/50 rounded-full hover:bg-white transition shadow-sm"><Icon name="Volume2" size={16}/></button>)}</div></div></div>))}
                         <div ref={messagesEndRef} />
                     </div>
                     <div className="p-3 bg-white border-t flex items-end gap-2 safe-bottom">
-                        <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => {if(e.key==='Enter' && !e.shiftKey){e.preventDefault(); handleSend();}}} placeholder="继续追问..." className="flex-1 max-h-32 p-3 bg-gray-50 border-0 rounded-xl focus:ring-2 focus:ring-indigo-100 outline-none resize-none text-sm" rows="1"></textarea>
+                        <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => {if(e.key==='Enter' && !e.shiftKey){e.preventDefault(); handleSend();}}} placeholder="输入问题..." className="flex-1 max-h-32 p-3 bg-gray-50 border-0 rounded-xl focus:ring-2 focus:ring-indigo-100 outline-none resize-none text-sm" rows="1"></textarea>
                         <button onClick={(e)=>handleSend(e)} disabled={isLoading || !input.trim()} className={`p-3 rounded-xl text-white shadow-md transition-all ${isLoading || !input.trim() ? 'bg-gray-300' : bubbleColor} active:scale-95`}>{isLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Icon name="Send" size={20} />}</button>
                     </div>
                 </div>
             );
         };
 
-        // --- Components ---
+        // --- 核心组件区域 ---
 
-        const Navbar = ({ view, setView }) => {
-            return (
-                <nav className="bg-indigo-600 text-white shadow-md sticky top-0 z-50 safe-top transition-all duration-300 flex-shrink-0">
-                    <div className="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
-                        <div className="flex items-center space-x-2" onClick={() => setView('home')}>
-                            <div className="font-bold text-lg cursor-pointer flex items-center space-x-2">
-                                <Icon name="Book" size={24}/>
-                                <span className="tracking-wide hidden sm:inline">考研词汇大师</span>
-                            </div>
-                        </div>
-                        <div className="flex space-x-1 items-center">
-                            <button onClick={() => setView('home')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'home' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Brain" /></button>
-                            <button onClick={() => setView('list')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'list' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="List" /></button>
-                            <button onClick={() => setView('import')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'import' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Upload" /></button>
-                            <button onClick={() => setView('settings')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'settings' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Settings" /></button>
-                        </div>
+        const Navbar = ({ view, setView }) => (
+            <nav className="bg-indigo-600 text-white shadow-md sticky top-0 z-50 safe-top transition-all duration-300 flex-shrink-0">
+                <div className="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
+                    <div className="flex items-center space-x-2" onClick={() => setView('home')}>
+                        <div className="font-bold text-lg cursor-pointer flex items-center space-x-2"><Icon name="Book" size={24}/><span className="tracking-wide hidden sm:inline">考研词汇大师</span></div>
                     </div>
-                </nav>
-            );
-        };
+                    <div className="flex space-x-1 items-center">
+                        <button onClick={() => setView('home')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'home' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Brain" /></button>
+                        <button onClick={() => setView('list')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'list' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="List" /></button>
+                        <button onClick={() => setView('import')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'import' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Upload" /></button>
+                        <button onClick={() => setView('settings')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'settings' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Settings" /></button>
+                    </div>
+                </div>
+            </nav>
+        );
 
         const WordListMode = ({ words, setWords, setChatSession }) => {
             const [search, setSearch] = useState("");
             const [sortMode, setSortMode] = useState('default');
-            const [sortDesc, setSortDesc] = useState(false);
-            const [showSortMenu, setShowSortMenu] = useState(false);
             const displayWords = useMemo(() => {
                 let list = words.filter(w => w.word.toLowerCase().includes(search.toLowerCase()) || w.meanings.some(m => m.def.includes(search)));
-                list.sort((a, b) => {
-                    if (sortMode === 'alpha') return a.word.localeCompare(b.word);
-                    else if (sortMode === 'reviews') return (a.stats?.reviewCount || 0) - (b.stats?.reviewCount || 0);
-                    return 0;
-                });
-                if (sortDesc) list.reverse();
+                if (sortMode === 'alpha') list.sort((a, b) => a.word.localeCompare(b.word));
+                else if (sortMode === 'reviews') list.sort((a, b) => (b.stats?.reviewCount || 0) - (a.stats?.reviewCount || 0));
                 return list;
-            }, [words, search, sortMode, sortDesc]);
-            const toggleSort = (mode) => { if (sortMode === mode) setSortDesc(!sortDesc); else { setSortMode(mode); setSortDesc(mode === 'reviews'); } setShowSortMenu(false); };
-            const toggleMastery = (wordId, meaningIndex) => { const newWords = [...words]; const idx = newWords.findIndex(w => w.id === wordId); if (idx !== -1) { newWords[idx].meanings[meaningIndex].isMastered = !newWords[idx].meanings[meaningIndex].isMastered; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); } };
+            }, [words, search, sortMode]);
             
             return (
                 <div className="flex-1 overflow-y-auto custom-scroll p-4 bg-gray-50">
                     <div className="max-w-6xl mx-auto pb-20">
-                        <div className="sticky top-0 bg-gray-50 pt-2 pb-4 z-40 space-y-2 md:flex md:space-y-0 md:space-x-4 md:items-center">
+                        <div className="sticky top-0 bg-gray-50 pt-2 pb-4 z-40 flex gap-2">
                             <div className="relative flex-1">
-                                <input type="text" placeholder="搜索单词或释义..." className="w-full pl-10 pr-4 py-3 rounded-xl shadow-sm border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition" value={search} onChange={e => setSearch(e.target.value)} />
+                                <input type="text" placeholder="搜索..." className="w-full pl-10 pr-4 py-3 rounded-xl shadow-sm border border-gray-200 outline-none focus:ring-2 focus:ring-indigo-500" value={search} onChange={e => setSearch(e.target.value)} />
                                 <div className="absolute left-3 top-3.5 text-gray-400"><Icon name="Search" /></div>
                             </div>
-                            <div className="flex justify-between items-center bg-white p-2 rounded-xl shadow-sm border border-gray-200 text-sm relative md:w-auto">
-                                <span className="text-gray-500 ml-2 whitespace-nowrap font-medium">共 {displayWords.length} 词</span>
-                                <button onClick={() => setShowSortMenu(!showSortMenu)} className="ml-4 flex items-center space-x-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium whitespace-nowrap transition"><Icon name="Sort" size={16} /><span>排序</span></button>
-                                {showSortMenu && (<div className="absolute right-0 top-full mt-2 w-40 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden ring-1 ring-black/5"><button onClick={() => toggleSort('default')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 transition text-gray-700">默认</button><button onClick={() => toggleSort('alpha')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 transition text-gray-700">字母 A-Z</button><button onClick={() => toggleSort('reviews')} className="w-full text-left px-4 py-3 hover:bg-indigo-50 transition text-gray-700">复习次数</button></div>)}
-                            </div>
+                            <button onClick={() => setSortMode(sortMode === 'default' ? 'alpha' : sortMode === 'alpha' ? 'reviews' : 'default')} className="px-3 bg-white border border-gray-200 rounded-xl shadow-sm text-gray-600"><Icon name="Sort" /></button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                             {displayWords.map((word) => (
-                                <div key={word.id} className="bg-white rounded-xl shadow-sm p-5 hover:shadow-md transition duration-200 border border-gray-100 hover:border-indigo-100 flex flex-col h-full relative group">
+                                <div key={word.id} className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 flex flex-col group relative">
                                     <div className="flex justify-between items-center mb-3">
-                                        <div className="flex items-baseline space-x-2 overflow-hidden">
-                                            <h3 className="text-lg font-bold text-gray-900 truncate">{word.word}</h3>
-                                            <span className="text-sm font-mono text-gray-500 truncate">{word.phonetic}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <button onClick={(e)=>{e.stopPropagation(); setChatSession(word.word);}} className="p-1.5 bg-indigo-50 text-indigo-500 hover:text-white hover:bg-indigo-500 rounded-full transition shadow-sm" title="AI 详解"><Icon name="MessageCircle" size={18}/></button>
-                                            <div className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full whitespace-nowrap font-medium">复习 {word.stats?.reviewCount || 0}</div>
-                                        </div>
+                                        <div><h3 className="text-lg font-bold text-gray-900">{word.word}</h3><span className="text-sm font-mono text-gray-500">{word.phonetic}</span></div>
+                                        <button onClick={(e)=>{e.stopPropagation(); setChatSession(word.word);}} className="p-1.5 bg-indigo-50 text-indigo-500 rounded-full"><Icon name="MessageCircle" size={18}/></button>
                                     </div>
                                     <div className="space-y-2 flex-1">
                                         {word.meanings.map((m, mIdx) => (
-                                            <div key={mIdx} className="flex items-start group cursor-pointer p-1 -ml-1 rounded hover:bg-gray-50 transition" onClick={() => toggleMastery(word.id, mIdx)}>
-                                                <div className={`mt-0.5 mr-2 flex-shrink-0 transition-colors ${m.isMastered ? 'text-green-500' : 'text-gray-300 group-hover:text-gray-400'}`}><Icon name="Check" size={16} /></div>
-                                                <div className={`text-sm leading-snug break-words ${m.isMastered ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
-                                                    <span className="font-semibold mr-1 text-gray-500 text-xs uppercase">{m.pos}</span>{m.def}
-                                                </div>
-                                            </div>
+                                            <div key={mIdx} className="flex items-start text-sm text-gray-700"><span className="font-semibold mr-1 text-gray-500 text-xs uppercase">{m.pos}</span>{m.def}</div>
                                         ))}
                                     </div>
                                 </div>
@@ -371,360 +298,157 @@
                 const now = Date.now();
                 words.forEach(w => {
                     const cat = w.category || 'uncategorized';
-                    if (['high', 'medium', 'low', 'zero'].includes(cat)) counts[cat]++; else if (!counts[cat]) counts[cat] = 1; else counts[cat]++;
+                    if (['high', 'medium', 'low', 'zero'].includes(cat)) counts[cat]++; else counts[cat] = (counts[cat] || 0) + 1;
                     if (w.stats && w.stats.nextReview <= now && w.stats.interval !== 0) counts.review++;
                 });
                 return counts;
             }, [words]);
-            const standardCats = ['high', 'medium', 'low', 'zero'];
-            const customCats = Object.keys(stats).filter(k => !standardCats.includes(k) && k !== 'review' && k !== 'uncategorized');
-            const openCategory = (category) => { setSessionConfig({ type: 'group_select', category }); setView('group_list'); };
-            const startReview = () => { setSessionConfig({ type: 'review' }); setView('study'); };
-            
-            const Card = ({ title, count, color, onClick, isCustom }) => (
-                <div onClick={onClick} className={`bg-white p-5 rounded-xl shadow-sm border border-gray-100 cursor-pointer transform transition hover:scale-[1.02] hover:shadow-md active:scale-95 relative overflow-hidden group h-32 flex flex-col justify-between`}>
-                    <div className={`absolute top-0 left-0 w-1.5 h-full ${color} transition-all group-hover:w-2`}></div>
-                    <div className="flex justify-between items-start">
-                        <h3 className="font-bold text-gray-800 text-lg truncate pl-2">{title}</h3>
-                        <div className={`text-gray-200 group-hover:text-indigo-100 transition-colors ${isCustom ? 'opacity-70' : ''}`}>{isCustom ? <Icon name="Folder" size={28}/> : <Icon name="Book" size={28}/>}</div>
-                    </div>
-                    <div className="pl-2">
-                        <span className="text-2xl font-bold text-gray-700">{count}</span>
-                        <span className="text-xs text-gray-400 ml-1">词</span>
-                    </div>
+            const customCats = Object.keys(stats).filter(k => !['high', 'medium', 'low', 'zero', 'review', 'uncategorized'].includes(k));
+            const Card = ({ title, count, color, onClick, icon }) => (
+                <div onClick={onClick} className={`bg-white p-5 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md relative overflow-hidden h-32 flex flex-col justify-between`}>
+                    <div className={`absolute top-0 left-0 w-1.5 h-full ${color}`}></div>
+                    <div className="flex justify-between items-start"><h3 className="font-bold text-gray-800 text-lg">{title}</h3><div className="text-gray-200">{icon || <Icon name="Book" size={28}/>}</div></div>
+                    <div><span className="text-2xl font-bold text-gray-700">{count}</span><span className="text-xs text-gray-400 ml-1">词</span></div>
                 </div>
             );
 
             return (
                 <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 bg-gray-50">
                     <div className="max-w-5xl mx-auto space-y-8 pb-10">
-                        {/* 智能复习卡片 - 图标已修复居中 */}
-                        <div onClick={startReview} className="w-full bg-gradient-to-br from-indigo-600 to-violet-600 p-8 rounded-2xl text-white shadow-xl shadow-indigo-200 cursor-pointer transform transition hover:-translate-y-1 hover:shadow-2xl active:scale-[0.99] relative overflow-hidden flex flex-col md:flex-row justify-between items-center group">
-                            <div className="z-10 relative text-center md:text-left">
-                                <h2 className="text-3xl font-bold mb-2 tracking-tight">智能复习计划</h2>
-                                <p className="text-indigo-100 text-lg opacity-90">今日待复习: <span className="font-bold text-white bg-white/20 px-3 py-0.5 rounded-lg ml-1">{stats.review}</span> 个单词</p>
-                            </div>
-                            {/* 这里使用 flex items-center justify-center 确保图标居中 */}
-                            <div className="mt-4 md:mt-0 bg-white/20 w-20 h-20 rounded-full flex items-center justify-center z-10 relative group-hover:scale-110 transition duration-300 backdrop-blur-sm border border-white/30">
-                                <Icon name="Brain" size={40} className="text-white"/>
-                            </div>
+                        <div onClick={() => { setSessionConfig({ type: 'review' }); setView('study'); }} className="w-full bg-gradient-to-br from-indigo-600 to-violet-600 p-8 rounded-2xl text-white shadow-xl cursor-pointer flex flex-col md:flex-row justify-between items-center relative overflow-hidden">
+                            <div className="z-10"><h2 className="text-3xl font-bold mb-2">智能复习计划</h2><p className="text-indigo-100 text-lg">今日待复习: <span className="font-bold bg-white/20 px-2 rounded">{stats.review}</span> 词</p></div>
+                            <div className="mt-4 md:mt-0 bg-white/20 w-20 h-20 rounded-full flex items-center justify-center z-10 border border-white/30"><Icon name="Brain" size={40} className="text-white"/></div>
                             <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
-                            <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-indigo-900/20 rounded-full blur-2xl"></div>
-                            {stats.review > 0 && <div className="absolute top-6 right-6 w-3 h-3 bg-red-400 rounded-full animate-ping"></div>}
                         </div>
-
-                        <div>
-                            <h3 className="font-bold text-gray-800 px-1 flex items-center text-lg mb-4"><Icon name="List" size={20} className="mr-2 text-indigo-600"/>核心考频</h3>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-6">
-                                <Card title="高频词" count={stats.high || 0} color="bg-red-500" onClick={() => openCategory('high')} />
-                                <Card title="中频词" count={stats.medium || 0} color="bg-orange-500" onClick={() => openCategory('medium')} />
-                                <Card title="低频词" count={stats.low || 0} color="bg-yellow-500" onClick={() => openCategory('low')} />
-                                <Card title="零频词" count={stats.zero || 0} color="bg-green-500" onClick={() => openCategory('zero')} />
-                                {stats.uncategorized > 0 && <Card title="未分类" count={stats.uncategorized} color="bg-gray-400" onClick={() => openCategory('uncategorized')} />}
-                            </div>
-                        </div>
-
-                        {customCats.length > 0 && (
-                            <div>
-                                <h3 className="font-bold text-gray-800 px-1 flex items-center text-lg mb-4"><Icon name="Folder" size={20} className="mr-2 text-indigo-600"/>我的分组</h3>
-                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 lg:gap-6">
-                                    {customCats.map(cat => (<Card key={cat} title={cat} count={stats[cat]} color="bg-blue-500" onClick={() => openCategory(cat)} isCustom={true} />))}
-                                </div>
-                            </div>
-                        )}
+                        <div><h3 className="font-bold text-gray-800 px-1 flex items-center text-lg mb-4"><Icon name="List" size={20} className="mr-2 text-indigo-600"/>核心考频</h3><div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <Card title="高频词" count={stats.high} color="bg-red-500" onClick={() => { setSessionConfig({ type: 'group_select', category: 'high' }); setView('group_list'); }} />
+                            <Card title="中频词" count={stats.medium} color="bg-orange-500" onClick={() => { setSessionConfig({ type: 'group_select', category: 'medium' }); setView('group_list'); }} />
+                            <Card title="低频词" count={stats.low} color="bg-yellow-500" onClick={() => { setSessionConfig({ type: 'group_select', category: 'low' }); setView('group_list'); }} />
+                            <Card title="零频词" count={stats.zero} color="bg-green-500" onClick={() => { setSessionConfig({ type: 'group_select', category: 'zero' }); setView('group_list'); }} />
+                        </div></div>
+                        {customCats.length > 0 && <div><h3 className="font-bold text-gray-800 px-1 flex items-center text-lg mb-4"><Icon name="Folder" size={20} className="mr-2 text-indigo-600"/>我的分组</h3><div className="grid grid-cols-2 md:grid-cols-4 gap-4">{customCats.map(cat => <Card key={cat} title={cat} count={stats[cat]} color="bg-blue-500" icon={<Icon name="Folder" size={28}/>} onClick={() => { setSessionConfig({ type: 'group_select', category: cat }); setView('group_list'); }} />)}</div></div>}
                     </div>
                 </div>
             );
         };
 
-        const GroupList = ({ words, setWords, category, setView, setSessionConfig, config }) => {
-            const [moveModal, setMoveModal] = useState({ open: false, targetGroupWords: [] });
-            const [editModal, setEditModal] = useState({ open: false, batchId: '', currentName: '', currentDesc: '' });
-            const [customTarget, setCustomTarget] = useState('');
-            const [groupMeta, setGroupMeta] = useState({});
-
-            useEffect(() => {
-                try {
-                    const savedMeta = localStorage.getItem('kaoyan_group_meta');
-                    if (savedMeta) setGroupMeta(JSON.parse(savedMeta));
-                } catch (e) { console.error("加载分组信息失败", e); }
-            }, []);
-
+        const GroupList = ({ words, category, setView, setSessionConfig, config }) => {
             const groups = useMemo(() => {
                 const catWords = words.filter(w => (w.category || 'uncategorized') === category);
                 const groupSize = config.groupSize || 208;
                 const batches = {};
-                catWords.forEach(w => { const batchId = w.importId || 'default'; if (!batches[batchId]) batches[batchId] = []; batches[batchId].push(w); });
-                const result = [];
-                const batchKeys = Object.keys(batches).sort((a, b) => { if (a === 'default') return -1; if (b === 'default') return 1; return parseInt(b.split('-')[1] || 0) - parseInt(a.split('-')[1] || 0); });
-                let globalIndex = 1;
-                batchKeys.forEach(batchId => {
-                    const batchWords = batches[batchId]; const count = Math.ceil(batchWords.length / groupSize);
+                catWords.forEach(w => { const bid = w.importId || 'default'; if(!batches[bid]) batches[bid]=[]; batches[bid].push(w); });
+                const res = [];
+                Object.keys(batches).forEach(bid => {
+                    const bWords = batches[bid];
+                    const count = Math.ceil(bWords.length / groupSize);
                     for(let i=0; i<count; i++) {
-                        const start = i * groupSize; const end = Math.min((i+1) * groupSize, batchWords.length);
-                        const groupWords = batchWords.slice(start, end);
+                        const groupWords = bWords.slice(i*groupSize, (i+1)*groupSize);
                         const mastered = groupWords.filter(w => w.stats && w.stats.interval > 0).length;
-                        const meta = groupMeta[batchId] || {};
-                        let batchName = meta.name;
-                        if (!batchName) {
-                            if (batchId !== 'default') { 
-                                const ts = parseInt(batchId.split('-')[1]); 
-                                if (!isNaN(ts)) { const date = new Date(ts); batchName = `${date.getFullYear()}/${date.getMonth()+1}/${date.getDate()} 导入`; } else { batchName = "新批次"; } 
-                            } else { batchName = "默认词库"; }
-                        }
-                        result.push({ index: globalIndex++, batchId, batchIndex: i, batchName, desc: meta.desc || "", start: start + 1, end, total: groupWords.length, mastered, words: groupWords });
+                        res.push({ batchId: bid, batchIndex: i, name: bid==='default'?'默认词库':`导入批次 ${bid.split('-')[1]||''}`, total: groupWords.length, mastered, words: groupWords });
                     }
                 });
-                return result;
-            }, [words, category, config.groupSize, groupMeta]);
-
-            const displayTitle = ({ high: "高频词", medium: "中频词", low: "低频词", zero: "零频词", uncategorized: "未分类" })[category] || category;
-            const startGroup = (batchId, batchIndex) => { setSessionConfig({ type: 'group_study', category, batchId, batchIndex }); setView('study'); };
-            
-            const handleDeleteGroup = (e, groupWords) => {
-                e.stopPropagation();
-                if(confirm(`确定要删除该组的 ${groupWords.length} 个单词吗？此操作不可恢复。`)) {
-                    const idsToDelete = groupWords.map(w => w.id);
-                    const newWords = words.filter(w => !idsToDelete.includes(w.id));
-                    setWords(newWords);
-                    localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
-                }
-            };
-
-            const openMoveModal = (e, groupWords) => { e.stopPropagation(); setMoveModal({ open: true, targetGroupWords: groupWords }); setCustomTarget(''); };
-            const performMove = (targetCat) => {
-                if(!targetCat) return;
-                const idsToMove = moveModal.targetGroupWords.map(w => w.id);
-                const newWords = words.map(w => idsToMove.includes(w.id) ? { ...w, category: targetCat } : w);
-                setWords(newWords);
-                localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
-                setMoveModal({ open: false, targetGroupWords: [] });
-                alert("转移成功！");
-            };
-
-            const openEditModal = (e, batchId, currentName, currentDesc) => {
-                e.stopPropagation();
-                const isDefaultName = currentName.includes("导入") || currentName === "默认词库" || currentName === "新批次";
-                setEditModal({ open: true, batchId, currentName: isDefaultName ? '' : currentName, currentDesc: currentDesc || '' });
-            };
-
-            const saveGroupInfo = () => {
-                const newMeta = { ...groupMeta, [editModal.batchId]: { name: editModal.currentName.trim(), desc: editModal.currentDesc.trim() } };
-                setGroupMeta(newMeta);
-                localStorage.setItem('kaoyan_group_meta', JSON.stringify(newMeta));
-                setEditModal({ open: false, batchId: '', currentName: '', currentDesc: '' });
-            };
+                return res;
+            }, [words, category]);
 
             return (
-                <div className="flex-1 overflow-y-auto custom-scroll p-4 bg-gray-50 relative">
+                <div className="flex-1 overflow-y-auto custom-scroll p-4 bg-gray-50">
                     <div className="max-w-5xl mx-auto pb-20">
-                        <div className="flex items-center mb-6">
-                            <h2 className="text-2xl font-bold text-gray-800 truncate border-l-4 border-indigo-600 pl-3">{displayTitle}</h2>
-                            <span className="ml-3 text-sm text-gray-500 bg-gray-200 px-2 py-0.5 rounded-md">分组管理</span>
-                        </div>
-                        {groups.length === 0 ? 
-                            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl shadow-sm border border-gray-100"><div className="text-gray-300 mb-4"><Icon name="Book" size={48}/></div><div className="text-gray-500">该分类下暂无单词</div></div> 
-                        : 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                            {groups.map(g => (
-                                <div key={g.index} onClick={() => startGroup(g.batchId, g.batchIndex)} className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:border-indigo-300 hover:shadow-md transition duration-200 flex flex-col group relative overflow-hidden min-h-[160px]">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div className="flex-1 pr-2">
-                                            <h3 className="font-bold text-gray-800 text-lg line-clamp-1" title={g.batchName}>{g.batchName}</h3>
-                                            <div className="flex items-center mt-1 space-x-2"><span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200">Group {g.index}</span></div>
-                                        </div>
-                                        <div className="flex space-x-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                            <button onClick={(e) => openEditModal(e, g.batchId, g.batchName, g.desc)} className="p-1.5 bg-gray-50 text-gray-600 rounded hover:bg-indigo-50 hover:text-indigo-600 transition" title="编辑信息"><Icon name="Edit" size={16}/></button>
-                                            <button onClick={(e) => openMoveModal(e, g.words)} className="p-1.5 bg-blue-50 text-blue-500 rounded hover:bg-blue-100 transition" title="转移分组"><Icon name="Move" size={16}/></button>
-                                            <button onClick={(e) => handleDeleteGroup(e, g.words)} className="p-1.5 bg-red-50 text-red-500 rounded hover:bg-red-100 transition" title="删除分组"><Icon name="Trash2" size={16}/></button>
-                                        </div>
-                                    </div>
-                                    <div className="mb-3 flex-1">{g.desc ? (<p className="text-xs text-gray-500 bg-gray-50 p-2 rounded border border-gray-100 line-clamp-2">{g.desc}</p>) : (<p className="text-xs text-gray-300 italic py-2">暂无备注...</p>)}</div>
-                                    <div className="mt-auto">
-                                        <div className="flex justify-between text-xs text-gray-500 mb-1"><span>进度</span><span className="font-medium">{Math.round((g.mastered/g.total)*100)}%</span></div>
-                                        <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-500" style={{width: `${(g.mastered/g.total)*100}%`}}></div></div>
-                                        <p className="text-xs text-gray-400 mt-2 text-right">{g.mastered} / {g.total} 词</p>
-                                    </div>
+                        <div className="flex items-center mb-6"><h2 className="text-2xl font-bold text-gray-800 border-l-4 border-indigo-600 pl-3">{category} 分组</h2></div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {groups.map((g, idx) => (
+                                <div key={idx} onClick={() => { setSessionConfig({ type: 'group_study', category, batchId: g.batchId, batchIndex: g.batchIndex }); setView('study'); }} className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:border-indigo-300 hover:shadow-md transition">
+                                    <h3 className="font-bold text-gray-800 text-lg">{g.name} - 组 {g.batchIndex + 1}</h3>
+                                    <div className="mt-3"><div className="flex justify-between text-xs text-gray-500 mb-1"><span>进度</span><span>{Math.round((g.mastered/g.total)*100)}%</span></div><div className="w-full h-2 bg-gray-100 rounded-full"><div className="h-full bg-indigo-500" style={{width: `${(g.mastered/g.total)*100}%`}}></div></div></div>
                                 </div>
                             ))}
                         </div>
-                        }
                     </div>
-                    {moveModal.open && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setMoveModal({open:false, targetGroupWords:[]})}>
-                            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
-                                <h3 className="text-xl font-bold mb-4 text-gray-800">转移该组单词到...</h3>
-                                <div className="grid grid-cols-2 gap-3 mb-4">{['high', 'medium', 'low', 'zero'].map(cat => (<button key={cat} onClick={() => performMove(cat)} className="py-3 bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 rounded-xl font-bold text-gray-700 hover:text-indigo-700 transition uppercase">{cat}</button>))}</div>
-                                <div className="border-t border-gray-100 pt-4 mt-2"><label className="text-xs font-bold text-gray-400 uppercase mb-2 block">自定义分组</label><div className="flex space-x-2"><input type="text" value={customTarget} onChange={e => setCustomTarget(e.target.value)} placeholder="输入分组名..." className="flex-1 p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"/><button onClick={() => performMove(customTarget)} disabled={!customTarget.trim()} className="px-4 bg-indigo-600 text-white rounded-xl font-bold disabled:opacity-50">确定</button></div></div>
-                                <button onClick={() => setMoveModal({open:false, targetGroupWords:[]})} className="mt-6 w-full py-3 text-gray-500 hover:bg-gray-50 rounded-xl font-medium">取消</button>
-                            </div>
-                        </div>
-                    )}
-                    {editModal.open && (
-                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setEditModal({...editModal, open:false})}>
-                            <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
-                                <h3 className="text-xl font-bold mb-4 text-gray-800">编辑分组信息</h3>
-                                <div className="mb-4"><label className="block text-xs font-bold text-gray-500 uppercase mb-1">分组名称</label><input type="text" value={editModal.currentName} onChange={e => setEditModal({...editModal, currentName: e.target.value})} placeholder="例如: 2010年真题阅读A" className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" autoFocus /></div>
-                                <div className="mb-6"><label className="block text-xs font-bold text-gray-500 uppercase mb-1">备注 / 简介</label><textarea value={editModal.currentDesc} onChange={e => setEditModal({...editModal, currentDesc: e.target.value})} placeholder="例如: 这部分单词比较难，需要多复习几次..." className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none"></textarea></div>
-                                <div className="flex space-x-3"><button onClick={() => setEditModal({...editModal, open:false})} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">取消</button><button onClick={saveGroupInfo} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition">保存</button></div>
-                            </div>
-                        </div>
-                    )}
                 </div>
             );
         };
 
-     const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
+        const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
             const [queue, setQueue] = useState([]);
             const [currentIdx, setCurrentIdx] = useState(0);
             const [isFlipped, setIsFlipped] = useState(false);
             const [isFinished, setIsFinished] = useState(false);
-            const [isGenerating, setIsGenerating] = useState(false);
-            // 新增：全屏状态
-            const [isFullscreen, setIsFullscreen] = useState(false);
+            const [isFullscreen, setIsFullscreen] = useState(false); // 全屏状态
 
             useEffect(() => {
                 const now = Date.now();
                 let q = [];
-                const groupSize = config.groupSize || 208;
                 if (sessionConfig.type === 'review') {
                     q = words.filter(w => w.stats && w.stats.nextReview <= now && w.stats.interval !== 0);
                     if(q.length === 0) q = words.filter(w => w.stats && w.stats.interval < 1 && w.stats.interval !== 0);
                     q = q.sort(() => Math.random() - 0.5).slice(0, 30);
                 } else if (sessionConfig.type === 'group_study') {
                     const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
-                    const batchId = sessionConfig.batchId;
-                    const batchWords = catWords.filter(w => (w.importId || 'default') === batchId);
-                    const start = sessionConfig.batchIndex * groupSize;
-                    const end = start + groupSize;
-                    const targetGroup = batchWords.slice(start, end);
-                    const newWords = targetGroup.filter(w => !w.stats || w.stats.interval === 0);
-                    const reviewWords = targetGroup.filter(w => w.stats && w.stats.interval !== 0);
-                    q = [...newWords, ...reviewWords];
+                    const batchWords = catWords.filter(w => (w.importId || 'default') === sessionConfig.batchId);
+                    const start = sessionConfig.batchIndex * (config.groupSize || 208);
+                    q = batchWords.slice(start, start + (config.groupSize || 208));
                 }
                 setQueue(q);
             }, [sessionConfig]);
 
-            useEffect(() => { if (queue.length > 0 && !isFinished && !isFlipped) { const word = queue[currentIdx]?.word; if (word) { const timer = setTimeout(() => playAudio(word), 300); return () => clearTimeout(timer); } } }, [currentIdx, queue, isFinished]);
+            useEffect(() => { if (queue.length > 0 && !isFinished && !isFlipped) { const timer = setTimeout(() => playAudio(queue[currentIdx].word), 300); return () => clearTimeout(timer); } }, [currentIdx, queue, isFinished]);
 
-            // 新增：全屏切换逻辑
+            // 全屏切换逻辑
             const toggleFullscreen = () => {
                 if (!document.fullscreenElement) {
-                    document.documentElement.requestFullscreen().catch(err => {
-                        console.log(`Error attempting to enable full-screen mode: ${err.message}`);
-                    });
+                    document.documentElement.requestFullscreen().catch(e => console.log(e));
                     setIsFullscreen(true);
                 } else {
-                    if (document.exitFullscreen) {
-                        document.exitFullscreen();
-                        setIsFullscreen(false);
-                    }
+                    if (document.exitFullscreen) document.exitFullscreen();
+                    setIsFullscreen(false);
                 }
             };
 
-            if (queue.length === 0 && !isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full"><div className="bg-green-100 p-6 rounded-full mb-6 text-green-600"><Icon name="Check" size={48}/></div><h2 className="text-2xl font-bold text-gray-800 mb-2">当前任务完成</h2><p className="text-gray-500 mb-8">休息一下，稍后再来！</p><button onClick={onExit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95">返回首页</button></div></div>;
-            if (isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full"><div className="bg-indigo-100 p-6 rounded-full mb-6 text-indigo-600"><Icon name="Sparkles" size={48}/></div><h2 className="text-2xl font-bold text-gray-800 mb-4">本轮学习结束 🎉</h2><button onClick={onExit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95">返回</button></div></div>;
+            if (queue.length === 0 && !isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6"><div className="bg-green-100 p-6 rounded-full mb-6 text-green-600"><Icon name="Check" size={48}/></div><h2 className="text-2xl font-bold mb-2">任务完成</h2><button onClick={onExit} className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg mt-4">返回</button></div>;
+            if (isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6"><div className="bg-indigo-100 p-6 rounded-full mb-6 text-indigo-600"><Icon name="Sparkles" size={48}/></div><h2 className="text-2xl font-bold mb-4">学习结束 🎉</h2><button onClick={onExit} className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg">返回</button></div>;
 
             const currentCard = queue[currentIdx];
             const handleRating = (rating) => {
-                const word = currentCard;
-                const currentStats = word.stats || { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 };
-                const result = calculateNextReview(rating, currentStats.interval, currentStats.easeFactor, currentStats.reviewCount);
-                const newStats = { interval: result.interval, easeFactor: result.easeFactor, nextReview: Date.now() + (result.interval * 24 * 60 * 60 * 1000), reviewCount: result.reviewCount };
-                const updatedWords = words.map(w => w.id === word.id ? { ...w, stats: newStats } : w);
-                setWords(updatedWords);
-                localStorage.setItem('kaoyan_vocab_list', JSON.stringify(updatedWords));
-                if (result.isDueNow) setQueue(prev => [...prev, { ...word, stats: newStats, isRepeat: true }]);
+                const res = calculateNextReview(rating, currentCard.stats?.interval||0, currentCard.stats?.easeFactor||2.5, currentCard.stats?.reviewCount||0);
+                const newStats = { ...res, nextReview: Date.now() + (res.interval * 86400000) };
+                const newWords = words.map(w => w.id === currentCard.id ? { ...w, stats: newStats } : w);
+                setWords(newWords);
+                localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
+                if (res.isDueNow) setQueue(prev => [...prev, { ...currentCard, stats: newStats }]);
                 setIsFlipped(false); setTimeout(() => currentIdx + 1 >= queue.length ? setIsFinished(true) : setCurrentIdx(prev => prev + 1), 200);
-            };
-            const toggleMeaningMastery = (e, mIdx) => { e.stopPropagation(); const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], isMastered:!meanings[mIdx].isMastered, _forceShow:false}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); const newWords=[...words]; const idx=newWords.findIndex(w=>w.id===currentCard.id); if(idx!==-1){ newWords[idx]={...newWords[idx], meanings:meanings}; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); } };
-            const toggleForceShow = (mIdx) => { const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], _forceShow:!meanings[mIdx]._forceShow}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); };
-            const generateSentence = async (e, meaningIndex) => {
-                e.stopPropagation(); if (!config.apiKey) { alert("请设置 API Key"); return; } setIsGenerating(true);
-                try {
-                    const prompt = `English example sentence for "${currentCard.word}" meaning "${currentCard.meanings[meaningIndex].def}".`;
-                    let newSentence = "";
-                    if (config.type === 'google') { const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({contents:[{parts:[{text:prompt}]}]}) }); const data = await res.json(); newSentence = data.candidates?.[0]?.content?.parts?.[0]?.text; }
-                    else { let baseUrl = config.baseUrl.replace(/\/$/, ""); if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel") && !baseUrl.includes("lingyiwanwu") && !baseUrl.includes("siliconflow")) baseUrl += "/v1"; const res = await fetch(`${baseUrl}/chat/completions`, { method: 'POST', headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${config.apiKey}`}, body: JSON.stringify({model:config.model, messages:[{role:"user",content:prompt}]}) }); const data = await res.json(); newSentence = data.choices?.[0]?.message?.content; }
-                    if(newSentence) { const s = newSentence.trim().replace(/^["']|["']$/g, ''); const newWords = [...words]; newWords.find(w => w.id === currentCard.id).meanings[meaningIndex].sentence = s; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); const newQueue = [...queue]; newQueue[currentIdx].meanings[meaningIndex].sentence = s; setQueue(newQueue); }
-                } catch(e){ alert(e.message); } finally { setIsGenerating(false); }
             };
 
             return (
                 <div className="flex-1 flex flex-col relative bg-gray-100 overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1.5 bg-gray-200 z-10">
-                        <div className="h-full bg-indigo-600 transition-all duration-300 ease-out" style={{width: `${(currentIdx / queue.length) * 100}%`}}></div>
-                    </div>
+                    <div className="absolute top-0 left-0 w-full h-1.5 bg-gray-200 z-10"><div className="h-full bg-indigo-600 transition-all duration-300" style={{width: `${(currentIdx / queue.length) * 100}%`}}></div></div>
                     
-                    {/* 左上角：退出按钮 */}
-                    <button onClick={onExit} className="absolute top-4 left-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title="退出">
-                        <Icon name="ArrowLeft" size={24}/>
-                    </button>
-                    
-                    {/* 右上角：全屏按钮 (新增) - 放在 AI 按钮左边一点 */}
-                    <button onClick={toggleFullscreen} className="absolute top-4 right-16 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title={isFullscreen ? "退出全屏" : "全屏模式"}>
-                        <Icon name={isFullscreen ? "Minimize" : "Maximize"} size={24}/>
-                    </button>
-
-                    {/* 右上角：AI 按钮 */}
-                    <button onClick={(e)=>{e.stopPropagation(); setChatSession(currentCard.word);}} className="absolute top-4 right-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-indigo-500 hover:text-white hover:bg-indigo-500 transition" title="AI 详解">
-                        <Icon name="MessageCircle" size={24}/>
-                    </button>
+                    <button onClick={onExit} className="absolute top-4 left-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow text-gray-600"><Icon name="ArrowLeft" size={24}/></button>
+                    {/* 修复：全屏按钮加回来了！放在 AI 按钮左侧 */}
+                    <button onClick={toggleFullscreen} className="absolute top-4 right-16 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow text-gray-600"><Icon name={isFullscreen ? "Minimize" : "Maximize"} size={24}/></button>
+                    <button onClick={(e)=>{e.stopPropagation(); setChatSession(currentCard.word);}} className="absolute top-4 right-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow text-indigo-500"><Icon name="MessageCircle" size={24}/></button>
 
                     <div className="flex-1 flex items-center justify-center p-4 md:p-8 overflow-hidden">
                         <div className="relative scene w-full max-w-sm md:max-w-3xl aspect-[3/4] md:aspect-[4/3] max-h-[85vh]">
                             <div className={`card-object ${isFlipped ? 'is-flipped' : ''}`} onClick={() => setIsFlipped(!isFlipped)}>
-                                {/* 卡片正面 */}
-                                <div className="card-face flex flex-col items-center justify-center p-8 md:p-12 text-center bg-gradient-to-br from-white to-gray-50 border border-white">
-                                    <div className="flex-1 flex flex-col items-center justify-center w-full">
-                                        <h1 className="text-5xl md:text-7xl lg:text-8xl font-black text-gray-800 mb-6 md:mb-10 tracking-tight">{currentCard.word}</h1>
-                                        <div className="flex items-center space-x-3 text-gray-500 bg-white border border-gray-200 shadow-sm px-5 py-2.5 rounded-full cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition transform hover:scale-105" onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}}>
-                                            <Icon name="Volume2" size={24} className="md:w-7 md:h-7"/><span className="font-mono text-xl md:text-2xl">{currentCard.phonetic}</span>
-                                        </div>
-                                    </div>
-                                    <div className="mt-auto text-gray-400 text-sm md:text-base animate-pulse font-medium">点击翻转查看释义</div>
+                                <div className="card-face flex flex-col items-center justify-center p-8 text-center bg-gradient-to-br from-white to-gray-50 border border-white">
+                                    <h1 className="text-5xl md:text-7xl font-black text-gray-800 mb-6">{currentCard.word}</h1>
+                                    <div className="flex items-center space-x-3 text-gray-500 bg-white border border-gray-200 shadow-sm px-5 py-2.5 rounded-full" onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}}><Icon name="Volume2" size={24}/><span className="font-mono text-xl">{currentCard.phonetic}</span></div>
+                                    <div className="mt-auto text-gray-400 text-sm animate-pulse">点击查看释义</div>
                                 </div>
-                                
-                                {/* 卡片背面 */}
                                 <div className="card-face card-face-back p-0 bg-white">
-                                    <div className="flex-shrink-0 bg-white/95 backdrop-blur border-b border-gray-100 p-4 md:p-6 flex justify-between items-center z-10 shadow-sm">
-                                        <h2 className="text-2xl md:text-4xl font-bold text-indigo-900">{currentCard.word}</h2>
-                                        <button onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}} className="p-3 bg-indigo-50 rounded-full text-indigo-600 hover:bg-indigo-100 transition"><Icon name="Volume2" size={24}/></button>
+                                    <div className="flex-shrink-0 bg-white/95 backdrop-blur border-b border-gray-100 p-6 flex justify-between items-center z-10"><h2 className="text-3xl font-bold text-indigo-900">{currentCard.word}</h2><button onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}} className="p-2 bg-indigo-50 rounded-full text-indigo-600"><Icon name="Volume2" size={24}/></button></div>
+                                    <div className="flex-1 overflow-y-auto custom-scroll p-6 space-y-4">
+                                        {currentCard.meanings.map((m, idx) => (
+                                            <div key={idx} className="p-4 bg-white rounded-xl border border-gray-100 shadow-sm">
+                                                <div className="flex justify-between mb-2"><span className="font-bold bg-indigo-50 text-indigo-600 px-2 rounded uppercase text-sm">{m.pos}</span></div>
+                                                <div className="text-lg text-gray-800">{m.isMastered && !m._forceShow ? <span className="text-gray-400 cursor-pointer" onClick={(e)=>{e.stopPropagation(); const nw=[...words]; nw.find(w=>w.id===currentCard.id).meanings[idx]._forceShow=true; setWords(nw);}}>(已掌握，点击查看)</span> : m.def}</div>
+                                            </div>
+                                        ))}
                                     </div>
-                                    <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 space-y-4 md:space-y-6">
-                                        {currentCard.meanings.map((m, idx) => {
-                                            const isHidden = m.isMastered && !m._forceShow;
-                                            return (
-                                                <div key={idx} className="relative p-5 md:p-6 bg-white rounded-2xl border border-gray-100 shadow-sm transition-all hover:shadow-md hover:border-indigo-100">
-                                                    <div className="flex justify-between items-center mb-3">
-                                                        <span className="text-xs md:text-sm font-bold bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-md uppercase tracking-wide">{m.pos}</span>
-                                                        <button onClick={(e) => toggleMeaningMastery(e, idx)} className={`p-2 rounded-lg transition active:scale-95 ${m.isMastered ? 'text-gray-400 bg-gray-100' : 'text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50'}`}>{m.isMastered ? <Icon name="EyeOff" size={20} /> : <Icon name="Eye" size={20} />}</button>
-                                                    </div>
-                                                    <div className="mb-3 min-h-[1.5rem]">
-                                                        {isHidden ? (
-                                                            <div onClick={(e) => { e.stopPropagation(); toggleForceShow(idx); }} className="bg-gray-50 text-gray-400 text-sm py-4 px-4 rounded-xl cursor-pointer flex items-center justify-center select-none hover:bg-gray-100 transition border border-dashed border-gray-200">
-                                                                <Icon name="EyeOff" size={16} className="mr-2"/> 释义已隐藏 (点击查看)
-                                                            </div>
-                                                        ) : (
-                                                            <div className="text-gray-800 font-medium text-lg md:text-2xl leading-relaxed">{m.def}</div>
-                                                        )}
-                                                    </div>
-                                                    <div className="mt-4 pt-3 border-t border-gray-50">
-                                                        {m.sentence ? 
-                                                            <p className="text-sm md:text-lg text-gray-600 italic bg-gray-50 p-3 rounded-lg border-l-4 border-indigo-200">"{m.sentence}"</p> 
-                                                            : 
-                                                            <button onClick={(e) => generateSentence(e, idx)} className="group flex items-center gap-2 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-all active:scale-95 w-fit"><Icon name="Sparkles" size={16} /><span className="text-xs md:text-sm font-bold whitespace-nowrap">AI 生成例句</span></button>
-                                                        }
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                        <div className="h-20"></div> 
-                                    </div>
-                                    <div className="flex-shrink-0 absolute bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 md:p-6 flex space-x-3 md:space-x-6 shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.1)] z-20">
-                                        <button onClick={(e)=>{e.stopPropagation();handleRating(1);}} className="flex-1 btn-press bg-red-50 hover:bg-red-100 text-red-600 py-4 md:py-5 rounded-xl font-bold text-base md:text-lg flex flex-col items-center transition-colors border border-red-100"><span>不认识</span></button>
-                                        <button onClick={(e)=>{e.stopPropagation();handleRating(2);}} className="flex-1 btn-press bg-yellow-50 hover:bg-yellow-100 text-yellow-600 py-4 md:py-5 rounded-xl font-bold text-base md:text-lg flex flex-col items-center transition-colors border border-yellow-100"><span>不熟</span></button>
-                                        <button onClick={(e)=>{e.stopPropagation();handleRating(3);}} className="flex-1 btn-press bg-green-50 hover:bg-green-100 text-green-600 py-4 md:py-5 rounded-xl font-bold text-base md:text-lg flex flex-col items-center transition-colors border border-green-100"><span>认识</span></button>
+                                    <div className="flex-shrink-0 absolute bottom-0 left-0 right-0 bg-white border-t p-4 flex space-x-4 z-20">
+                                        <button onClick={(e)=>{e.stopPropagation();handleRating(1);}} className="flex-1 bg-red-50 text-red-600 py-4 rounded-xl font-bold">不认识</button>
+                                        <button onClick={(e)=>{e.stopPropagation();handleRating(2);}} className="flex-1 bg-yellow-50 text-yellow-600 py-4 rounded-xl font-bold">不熟</button>
+                                        <button onClick={(e)=>{e.stopPropagation();handleRating(3);}} className="flex-1 bg-green-50 text-green-600 py-4 rounded-xl font-bold">认识</button>
                                     </div>
                                 </div>
                             </div>
@@ -736,214 +460,80 @@
 
         const ImportExport = ({ setWords, words, setView, config }) => {
             const [activeTab, setActiveTab] = useState('data');
-            const [textInput, setTextInput] = useState('');
-            const [importMode, setImportMode] = useState('frequency');
-            const [importCategory, setImportCategory] = useState('high');
-            const [customGroupName, setCustomGroupName] = useState('');
-            const [isNewBatch, setIsNewBatch] = useState(false);
-            const [importBatchName, setImportBatchName] = useState(''); 
-            
-            const [aiInput, setAiInput] = useState('');
-            const [isFetching, setIsFetching] = useState(false);
-            const [fetchProgress, setFetchProgress] = useState({ current: 0, total: 0, success: 0, fail: 0 });
-
-            const getTargetCategory = () => { if (importMode === 'frequency') return importCategory; return customGroupName.trim() || `Import ${new Date().toLocaleDateString()}`; };
-            const saveBatchMeta = (batchId) => { if (isNewBatch && importBatchName.trim()) { try { const metaStr = localStorage.getItem('kaoyan_group_meta'); const meta = metaStr ? JSON.parse(metaStr) : {}; meta[batchId] = { name: importBatchName.trim(), desc: "" }; localStorage.setItem('kaoyan_group_meta', JSON.stringify(meta)); } catch (e) { console.error(e); } } };
-
-            const parseMultiPos = (rawWord, fullText) => {
-                let remains = fullText.substring(rawWord.length).trim();
-                const parts = remains.split(/(?:^|\s+)([a-z]{1,5}\.)\s+/).filter(p => p.trim());
-                const meanings = [];
-                for (let i = 0; i < parts.length; i++) {
-                    const part = parts[i];
-                    if (part.match(/^[a-z]{1,5}\.$/)) { const def = parts[i+1] || ""; meanings.push({ pos: part, def: def.trim(), sentence: "", isMastered: false }); i++; } 
-                    else if(i === 0) meanings.push({ pos: "mix.", def: part.trim(), sentence: "", isMastered: false });
-                }
-                return meanings;
-            };
-
-            const parseAndImport = () => { 
-                if(!textInput.trim()) return;
-                const targetCat = getTargetCategory(); const segments = textInput.split(/[;\n]+/);
-                let addedCount = 0, mergedCount = 0; let currentWords = JSON.parse(JSON.stringify(words)); 
-                const batchId = isNewBatch ? `batch-${Date.now()}` : 'default'; saveBatchMeta(batchId);
-                segments.forEach((seg, idx) => {
-                    seg = seg.trim(); if (!seg) return;
-                    const matchHead = seg.match(/^([a-zA-Z\-\s]+?)\s+/);
-                    if (matchHead) {
-                        const rawWord = matchHead[1].trim(); const parsedMeanings = parseMultiPos(rawWord, seg);
-                        if (parsedMeanings.length > 0) {
-                            const existingIdx = currentWords.findIndex(w => w.word.toLowerCase() === rawWord.toLowerCase());
-                            if (!isNewBatch && existingIdx !== -1) { const existingWord = currentWords[existingIdx]; parsedMeanings.forEach(nm => { if (!existingWord.meanings.some(om => om.pos === nm.pos && om.def === nm.def)) existingWord.meanings.push(nm); }); mergedCount++; } 
-                            else { currentWords.push({ id: `auto-${Date.now()}-${idx}`, word: rawWord, phonetic: "", category: targetCat, importId: batchId, meanings: parsedMeanings, stats: { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 } }); addedCount++; }
-                        }
-                    }
-                });
-                if (addedCount > 0 || mergedCount > 0) { setWords(currentWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords)); alert(`导入成功！新增: ${addedCount}, 合并: ${mergedCount}`); setTextInput(''); setImportBatchName(''); } else alert("格式错误");
-            };
-
-            const repairData = () => {
-                let fixedCount = 0;
-                const newWords = words.map(w => {
-                    let needsFix = false; let newMeanings = [];
-                    w.meanings.forEach(m => {
-                        const parts = m.def.split(/\s+([a-z]{1,4}\.)\s+/);
-                        if (parts.length > 1) { needsFix = true; newMeanings.push({ ...m, def: parts[0].trim() }); for (let i = 1; i < parts.length; i += 2) if (parts[i+1]) newMeanings.push({ pos: parts[i], def: parts[i+1].trim(), sentence: "", isMastered: false }); } else newMeanings.push(m);
-                    });
-                    if (needsFix) { fixedCount++; return { ...w, meanings: newMeanings }; } return w;
-                });
-                if (fixedCount > 0) { setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); alert(`🎉 修复成功！整理了 ${fixedCount} 个单词。`); } else alert("暂未发现格式错乱的单词。");
-            };
-
-            const fetchWordsFromAI = async () => {
-                if (!config.apiKey) { alert("请配置 Key"); return; } if (!aiInput.trim()) return; const wordList = aiInput.split(/[\s,\n]+/).filter(w => w.trim().match(/^[a-zA-Z\-]+$/)); if(wordList.length===0) return;
-                setIsFetching(true); setFetchProgress({ current: 0, total: wordList.length, success: 0, fail: 0 }); const targetCat = getTargetCategory(); 
-                const batchId = isNewBatch ? `batch-${Date.now()}` : 'default'; saveBatchMeta(batchId);
-                const BATCH_SIZE = 5; let currentWords = JSON.parse(JSON.stringify(words)); let successCount = 0; let failCount = 0;
-                for (let i = 0; i < wordList.length; i += BATCH_SIZE) {
-                    const batch = wordList.slice(i, i + BATCH_SIZE); const batchStr = batch.join(", "); const prompt = `考研单词查询JSON:[${batchStr}]`;
+            const handleFile = (e) => {
+                const file = e.target.files[0]; if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
                     try {
-                        let jsonStr=""; if(config.type==='google'){ const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey.trim()}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})}); const data=await res.json(); jsonStr=data.candidates?.[0]?.content?.parts?.[0]?.text; } else { let baseUrl=config.baseUrl.replace(/\/$/,""); if(!baseUrl.includes("/v1")&&!baseUrl.includes("aliyuncs")&&!baseUrl.includes("bigmodel")&&!baseUrl.includes("lingyiwanwu")&&!baseUrl.includes("siliconflow"))baseUrl+="/v1"; const res=await fetch(`${baseUrl}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${config.apiKey.trim()}`},body:JSON.stringify({model:config.model,messages:[{role:"user",content:prompt}]})}); const data=await res.json(); jsonStr=data.choices?.[0]?.message?.content; }
-                        if(!jsonStr) throw new Error("Empty"); jsonStr=jsonStr.replace(/```json/g,'').replace(/```/g,'').trim(); const parsedBatch=JSON.parse(jsonStr);
-                        if(Array.isArray(parsedBatch)){ parsedBatch.forEach(item=>{ const existIdx=currentWords.findIndex(w=>w.word.toLowerCase()===item.word.toLowerCase()); const meanings=item.meanings.map(m=>({...m,sentence:"",isMastered:false})); if(!isNewBatch && existIdx!==-1){ item.meanings.forEach(nm=>{ if(!currentWords[existIdx].meanings.some(om=>om.pos===nm.pos && om.def===nm.def)) currentWords[existIdx].meanings.push({...nm,sentence:"",isMastered:false}); }); }else{ currentWords.push({id:`ai-${Date.now()}-${Math.random()}`,word:item.word,phonetic:item.phonetic||"",category:targetCat,importId:batchId,meanings,stats:{interval:0,easeFactor:2.5,nextReview:0,reviewCount:0}}); } }); successCount+=batch.length; }
-                    } catch(err){ failCount+=batch.length; }
-                    setFetchProgress({ current: Math.min(i+BATCH_SIZE, wordList.length), total: wordList.length, success: successCount, fail: failCount }); setWords([...currentWords]); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords));
-                } setIsFetching(false); alert("完成"); setImportBatchName('');
+                        const content = JSON.parse(ev.target.result);
+                        if (confirm(`确定要导入备份吗？这将覆盖当前数据！`)) {
+                            if(content.storage) { Object.keys(content.storage).forEach(k => localStorage.setItem(k, content.storage[k])); window.location.reload(); }
+                            else { setWords(content); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(content)); alert("导入成功"); }
+                        }
+                    } catch(err) { alert("文件格式错误"); }
+                };
+                reader.readAsText(file);
             };
-
-            const handleFile = (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { try { const content = JSON.parse(ev.target.result); if (content.type === 'KAOYAN_FULL_BACKUP' && content.storage) { if(confirm(`恢复备份将覆盖当前数据，确定吗？`)) { Object.keys(content.storage).forEach(key => { if(key.startsWith('kaoyan_')) localStorage.setItem(key, content.storage[key]); }); window.location.reload(); } return; } if (Array.isArray(content)) { if(confirm(`导入旧版单词表?`)) { setWords(content); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(content)); alert("完成"); } return; } } catch(err) { alert("错误"); } }; reader.readAsText(file); };
-            const exportFullData = async () => { 
-                const storage = {}; for(let i=0; i<localStorage.length; i++) { const key = localStorage.key(i); if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key); } 
-                const backup = { type: 'KAOYAN_FULL_BACKUP', version: 1.0, timestamp: Date.now(), storage };
-                const date = new Date(); const fileName = `考研备份_${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate()}.json`;
-                const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"}); 
-                const url = URL.createObjectURL(blob); 
-                const a = document.createElement('a'); a.href = url; a.download = fileName; a.click(); 
+            const exportData = () => {
+                const storage = {};
+                for(let i=0; i<localStorage.length; i++) { const key = localStorage.key(i); if(key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key); }
+                const blob = new Blob([JSON.stringify({ type: 'BACKUP', storage }, null, 2)], {type: "application/json"});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = `backup_${new Date().toISOString().slice(0,10)}.json`; a.click();
             };
 
             return (
-                <div className="flex-1 overflow-y-auto custom-scroll bg-gray-50 p-4 flex justify-center">
-                    <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 h-fit">
-                        <h2 className="text-2xl font-bold mb-6 text-gray-800">数据中心</h2>
-                        <div className="flex mb-6 border-b border-gray-100">
-                            <button onClick={() => setActiveTab('data')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='data'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>备份与恢复</button>
-                            <button onClick={() => setActiveTab('ai')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='ai'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>AI 速查</button>
-                            <button onClick={() => setActiveTab('text')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='text'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>批量粘贴</button>
+                <div className="flex-1 overflow-y-auto bg-gray-50 p-6 flex justify-center">
+                    <div className="w-full max-w-xl bg-white rounded-2xl shadow p-8 h-fit space-y-6">
+                        <h2 className="text-2xl font-bold text-gray-800">数据管理</h2>
+                        <div className="p-6 bg-indigo-50 rounded-xl border border-indigo-100">
+                            <h3 className="font-bold text-indigo-900 mb-2">本地备份与恢复</h3>
+                            <p className="text-sm text-indigo-700 mb-4">生成 .json 文件保存到本地，重装应用时可直接恢复。</p>
+                            <div className="flex gap-4">
+                                <button onClick={exportData} className="flex-1 py-3 bg-white text-indigo-600 border border-indigo-200 rounded-xl font-bold shadow-sm flex justify-center items-center"><Icon name="Download" className="mr-2"/>导出备份</button>
+                                <div className="relative flex-1">
+                                    <button className="w-full h-full py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-sm flex justify-center items-center"><Icon name="Upload" className="mr-2"/>恢复备份</button>
+                                    <input type="file" onChange={handleFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/>
+                                </div>
+                            </div>
                         </div>
-                        
-                        {activeTab === 'data' && (
-                            <div className="space-y-6 animate-fade-in">
-                                <div className="p-5 bg-orange-50 border border-orange-100 rounded-2xl flex justify-between items-center shadow-sm">
-                                    <div><h3 className="font-bold text-orange-900 text-sm mb-1">词性格式修复</h3><p className="text-xs text-orange-700/70">自动拆分 v. adj. 等连在一起的释义</p></div>
-                                    <button onClick={repairData} className="px-4 py-2 bg-white text-orange-600 border border-orange-200 rounded-lg font-bold text-xs shadow-sm hover:bg-orange-100 transition">🛠️ 修复</button>
-                                </div>
-
-                                <div className="p-6 bg-indigo-50 rounded-2xl border border-indigo-100 shadow-sm">
-                                    <div className="flex items-center mb-4"><Icon name="Folder" size={24} className="mr-2 text-indigo-600"/><h3 className="font-bold text-indigo-900 text-lg">本地备份</h3></div>
-                                    <p className="text-indigo-800/80 text-xs mb-4">生成 .json 文件并保存到手机/电脑，安全可靠。</p>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <button onClick={exportFullData} className="py-3 bg-white text-indigo-600 border border-indigo-200 rounded-xl font-bold shadow-sm hover:bg-indigo-50 flex flex-col items-center justify-center transition">
-                                            <Icon name="Upload" size={20} className="mb-1"/><span className="text-xs">导出文件</span>
-                                        </button>
-                                        <div className="relative">
-                                            <button className="w-full h-full py-3 bg-white text-indigo-600 border border-indigo-200 rounded-xl font-bold shadow-sm hover:bg-indigo-50 flex flex-col items-center justify-center transition">
-                                                <Icon name="Download" size={20} className="mb-1"/><span className="text-xs">导入文件</span>
-                                            </button>
-                                            <input type="file" onChange={handleFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="pt-4 border-t border-gray-100 text-center">
-                                    <button onClick={() => {if(confirm('⚠️ 确定要清空所有数据吗？此操作不可恢复！')) { setWords([]); localStorage.clear(); window.location.reload(); }}} className="text-red-400 text-xs hover:text-red-600 underline transition">重置应用 (清空数据)</button>
-                                </div>
-                            </div>
-                        )}
-
-                        {(activeTab === 'ai' || activeTab === 'text') && (
-                            <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                                <div className="flex space-x-6 mb-4">
-                                    <label className="flex items-center cursor-pointer"><input type="radio" checked={importMode==='frequency'} onChange={()=>setImportMode('frequency')} className="w-4 h-4 text-indigo-600"/><span className="ml-2 text-sm font-medium">存入考频</span></label>
-                                    <label className="flex items-center cursor-pointer"><input type="radio" checked={importMode==='group'} onChange={()=>setImportMode('group')} className="w-4 h-4 text-indigo-600"/><span className="ml-2 text-sm font-medium">自定义分组</span></label>
-                                </div>
-                                {importMode==='frequency' ? (<div className="grid grid-cols-4 gap-2 mb-4">{['high','medium','low','zero'].map(cat=>(<button key={cat} onClick={()=>setImportCategory(cat)} className={`py-2 text-sm rounded-lg border ${importCategory===cat?'bg-indigo-600 text-white':'bg-white text-gray-600'}`}>{cat}</button>))}</div>) : (<div className="mb-4"><input type="text" value={customGroupName} onChange={e=>setCustomGroupName(e.target.value)} placeholder="输入分组名称" className="w-full p-3 border rounded-lg text-sm outline-none"/></div>)}
-                                <label className="flex items-center pt-4 border-t border-gray-200 cursor-pointer"><input type="checkbox" checked={isNewBatch} onChange={e=>setIsNewBatch(e.target.checked)} className="w-4 h-4 text-indigo-600"/><span className="ml-2 text-sm font-bold text-gray-700">独立为新批次</span></label>
-                                {isNewBatch && (<div className="mt-4 animate-fade-in"><input type="text" value={importBatchName} onChange={e=>setImportBatchName(e.target.value)} placeholder="例如: 2015真题" className="w-full p-3 border border-indigo-200 bg-indigo-50 rounded-lg text-sm outline-none"/></div>)}
-                            </div>
-                        )}
-
-                        {activeTab === 'ai' && (<div className="space-y-4"><textarea value={aiInput} onChange={e => setAiInput(e.target.value)} placeholder="输入单词..." className="w-full h-40 p-4 border rounded-xl text-sm outline-none resize-none"></textarea>{isFetching ? <div className="text-center text-sm py-3 bg-indigo-50 text-indigo-600 rounded-xl animate-pulse">AI 抓取中...</div> : <button onClick={fetchWordsFromAI} className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-2"><Icon name="CloudDownload" size={20}/> 开始</button>}</div>)}
-                        {activeTab === 'text' && (<div className="space-y-4"><textarea value={textInput} onChange={e => setTextInput(e.target.value)} placeholder="格式：word n. 释义 v. 释义..." className="w-full h-48 p-4 border rounded-xl text-sm outline-none resize-none"></textarea><button onClick={parseAndImport} className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg">开始导入</button></div>)}
+                        <div className="pt-4 text-center"><button onClick={()=>{if(confirm('确定清空所有数据？')) {localStorage.clear(); window.location.reload();}}} className="text-red-400 text-xs hover:text-red-600 underline">重置应用</button></div>
                     </div>
                 </div>
             );
         };
 
         const SettingsPanel = ({ config, setConfig, setView }) => {
-            const [selectedPreset, setSelectedPreset] = useState('deepseek');
-            
-            useEffect(() => {
-                const matchedKey = Object.keys(API_PRESETS).find(key => {
-                    const preset = API_PRESETS[key];
-                    return preset.type === config.type && (preset.type === 'google' || config.baseUrl.includes(preset.url));
-                });
-                if (matchedKey) setSelectedPreset(matchedKey); else setSelectedPreset('custom');
-            }, []);
-
-            const handlePresetChange = (key) => {
-                setSelectedPreset(key);
-                const preset = API_PRESETS[key];
-                setConfig(prev => ({ ...prev, type: preset.type, baseUrl: preset.url }));
-            };
-
-            const updateConfigTrimmed = (key, value) => setConfig(prev => ({ ...prev, [key]: value.trim() }));
-
             return (
-                <div className="flex-1 overflow-y-auto custom-scroll bg-gray-50 p-4 flex justify-center">
-                    <div className="w-full max-w-xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 h-fit space-y-6">
-                        <h2 className="text-xl font-bold border-b border-gray-100 pb-4 text-gray-800">设置</h2>
-                        <div className="pt-2">
-                            <label className="block text-sm font-bold text-gray-700 mb-2">AI 设置</label>
-                            <select value={selectedPreset} onChange={(e) => handlePresetChange(e.target.value)} className="w-full border border-gray-200 p-3 rounded-xl bg-white outline-none mb-3">
-                                {Object.entries(API_PRESETS).map(([key, val]) => (<option key={key} value={key}>{val.name}</option>))}
-                            </select>
-                            <div className={selectedPreset === 'google' ? 'hidden' : 'block'}>
-                                <input value={config.baseUrl} onChange={e => updateConfigTrimmed('baseUrl', e.target.value)} className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 mb-3" placeholder="Base URL" disabled={selectedPreset !== 'custom'}/>
-                            </div>
-                            <input value={config.apiKey} onChange={e => updateConfigTrimmed('apiKey', e.target.value)} type="password" placeholder="AI API Key" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 mb-3"/>
-                            <input value={config.model} onChange={e => updateConfigTrimmed('model', e.target.value)} placeholder="Model Name" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50"/>
+                <div className="flex-1 overflow-y-auto bg-gray-50 p-6 flex justify-center">
+                    <div className="w-full max-w-xl bg-white rounded-2xl shadow p-8 h-fit">
+                        <h2 className="text-2xl font-bold mb-6">设置</h2>
+                        <div className="mb-4">
+                            <label className="block text-sm font-bold text-gray-700 mb-2">AI API Key</label>
+                            <input value={config.apiKey} onChange={e => setConfig({...config, apiKey: e.target.value})} type="password" className="w-full border p-3 rounded-xl bg-gray-50"/>
                         </div>
-                        <button onClick={()=>{ localStorage.setItem('kaoyan_config', JSON.stringify(config)); setView('home'); }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-xl font-bold shadow-lg transition active:scale-95">保存配置</button>
+                        <button onClick={()=>{ localStorage.setItem('kaoyan_config', JSON.stringify(config)); setView('home'); }} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold">保存</button>
                     </div>
                 </div>
             );
         };
-        
+
         const App = () => {
             const [view, setView] = useState('home');
             const [words, setWords] = useState([]);
             const [sessionConfig, setSessionConfig] = useState({}); 
-            const [config, setConfig] = useState({ type: 'openai', baseUrl: 'https://api.deepseek.com', apiKey: '', model: 'deepseek-chat', groupSize: 208, autoSync: false });
+            const [config, setConfig] = useState({ type: 'openai', baseUrl: 'https://api.deepseek.com', apiKey: '', model: 'deepseek-chat', groupSize: 208 });
             const [chatSession, setChatSession] = useState(null);
 
             useEffect(() => {
-                try {
-                    const saved = localStorage.getItem('kaoyan_vocab_list');
-                    const savedCfg = localStorage.getItem('kaoyan_config');
-                    if (saved) setWords(JSON.parse(saved));
-                    if (savedCfg) setConfig(JSON.parse(savedCfg));
-                } catch(e) {}
-                const loader = document.getElementById('root').querySelector('div');
-                if(loader && loader.style.border) loader.remove();
+                const saved = localStorage.getItem('kaoyan_vocab_list');
+                const savedCfg = localStorage.getItem('kaoyan_config');
+                if (saved) setWords(JSON.parse(saved));
+                if (savedCfg) setConfig(JSON.parse(savedCfg));
+                document.getElementById('root').querySelector('div')?.remove();
             }, []);
 
-            const handleBack = () => {
-                if (view === 'study') {
-                    if (sessionConfig.type === 'group_study') setView('group_list');
-                    else setView('home');
-                } else if (view === 'group_list') setView('home');
-                else setView('home');
-            };
+            const handleBack = () => { if(view==='study') setView(sessionConfig.type==='group_study'?'group_list':'home'); else setView('home'); };
 
             return (
                 <div className="h-full flex flex-col bg-gray-50">
@@ -957,12 +547,7 @@
                         {view === 'settings' && <SettingsPanel config={config} setConfig={setConfig} setView={setView} />}
                         {chatSession && (<div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4 animate-fade-in"><WordChat word={chatSession} onClose={() => setChatSession(null)} config={config} /></div>)}
                     </main>
-                    <style>{`
-                        @keyframes slide-up { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-                        .animate-slide-up { animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-                        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-                        .animate-fade-in { animation: fade-in 0.2s ease-out; }
-                    `}</style>
+                    <style>{`.animate-fade-in { animation: fade-in 0.2s ease-out; } @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }`}</style>
                 </div>
             );
         };
