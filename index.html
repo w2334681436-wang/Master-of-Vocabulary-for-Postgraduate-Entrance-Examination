@@ -887,7 +887,7 @@ const ImportExport = ({ setWords, words, setView, config }) => {
             const [aiInput, setAiInput] = useState('');
             const [isFetching, setIsFetching] = useState(false);
             const [fetchProgress, setFetchProgress] = useState({ current: 0, total: 0, success: 0, fail: 0 });
-            const [isSyncing, setIsSyncing] = useState(false); // 同步状态
+            const [isSyncing, setIsSyncing] = useState(false); 
 
             const getTargetCategory = () => { if (importMode === 'frequency') return importCategory; return customGroupName.trim() || `Import ${new Date().toLocaleDateString()}`; };
             
@@ -981,13 +981,13 @@ const ImportExport = ({ setWords, words, setView, config }) => {
             
             const exportFullData = () => { const storage = {}; for(let i=0; i<localStorage.length; i++) { const key = localStorage.key(i); if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key); } const backup = { type: 'KAOYAN_FULL_BACKUP', version: 1.0, timestamp: Date.now(), storage }; const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; const date = new Date(); a.download = `考研词汇_备份_${date.getFullYear()}${date.getMonth()+1}${date.getDate()}.json`; a.click(); };
 
-            // --- 云同步核心逻辑 (双重去空格保护) ---
+            // --- 修复后的同步逻辑 (核心修改) ---
             const syncToCloud = async () => {
                 const key = config.jsonbinKey ? config.jsonbinKey.trim() : "";
                 const id = config.jsonbinId ? config.jsonbinId.trim() : "";
 
-                if (!key || !id) { alert("请先去[设置]页面配置 JSONBin 的 Key 和 ID"); return; }
-                if (!confirm("⚠️ 警告：上传将覆盖云端旧数据！\n\n确定要将当前手机上的所有数据推送到云端吗？")) return;
+                if (!key || !id) { alert("请先配置 Cloud Key"); return; }
+                if (!confirm("⚠️ 确定上传并覆盖云端数据吗？")) return;
                 
                 setIsSyncing(true);
                 try {
@@ -997,20 +997,31 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                         if(k && k.startsWith('kaoyan_')) storage[k] = localStorage.getItem(k); 
                     }
                     const backup = { type: 'KAOYAN_CLOUD_SYNC', timestamp: Date.now(), storage };
+                    
+                    // 检查数据大小，超过 300KB 可能导致网络超时
+                    const payload = JSON.stringify(backup);
+                    if(payload.length > 500000) {
+                        console.warn("数据量较大，正在尝试上传...");
+                    }
 
+                    // 关键修复：增加 X-Bin-Versioning: false 头部
                     const res = await fetch(`https://api.jsonbin.io/v3/b/${id}`, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-Master-Key': key
+                            'X-Master-Key': key,
+                            'X-Bin-Versioning': 'false' // 👈 必须加这个，否则免费版必报错
                         },
-                        body: JSON.stringify(backup)
+                        body: payload
                     });
 
-                    if (!res.ok) throw new Error(`上传失败: ${res.status}`);
-                    alert("✅ 上传成功！\n\n现在你可以在另一台设备上点击[下载]了。");
+                    if (!res.ok) {
+                        const errData = await res.json();
+                        throw new Error(errData.message || `状态码 ${res.status}`);
+                    }
+                    alert("✅ 上传成功！");
                 } catch (e) {
-                    alert("同步错误: " + e.message);
+                    alert("同步失败: " + e.message + "\n\n提示：如果数据量太大，请尝试在电脑端使用 WiFi 上传。");
                 } finally {
                     setIsSyncing(false);
                 }
@@ -1020,8 +1031,8 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                 const key = config.jsonbinKey ? config.jsonbinKey.trim() : "";
                 const id = config.jsonbinId ? config.jsonbinId.trim() : "";
 
-                if (!key || !id) { alert("请先去[设置]页面配置 JSONBin 的 Key 和 ID"); return; }
-                if (!confirm("⚠️ 警告：下载将覆盖本地当前数据！\n\n确定要从云端拉取数据吗？此操作不可撤销。")) return;
+                if (!key || !id) { alert("请先配置 Cloud Key"); return; }
+                if (!confirm("⚠️ 下载将覆盖本地数据，确定吗？")) return;
 
                 setIsSyncing(true);
                 try {
@@ -1038,11 +1049,10 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                         Object.keys(data.storage).forEach(k => {
                             if(k.startsWith('kaoyan_')) localStorage.setItem(k, data.storage[k]);
                         });
-                        const dateStr = new Date(data.timestamp).toLocaleString();
-                        alert(`✅ 同步成功！\n数据版本: ${dateStr}\n\n页面即将刷新...`);
+                        alert("✅ 同步成功！页面将刷新...");
                         window.location.reload();
                     } else {
-                        alert("云端数据格式不正确");
+                        alert("云端数据为空或格式错误");
                     }
                 } catch (e) {
                     alert("同步错误: " + e.message);
@@ -1078,7 +1088,12 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                         
                         {activeTab === 'data' && (
                             <div className="space-y-6 animate-fade-in">
-                                {/* 云同步区域 */}
+                                <div className="p-6 bg-orange-50 border border-orange-100 rounded-2xl space-y-4">
+                                    <h3 className="font-bold text-orange-900 flex items-center"><Icon name="Sparkles" className="mr-2"/> 智能数据修复</h3>
+                                    <p className="text-sm text-orange-700/80">如果你发现某些单词的词性（如 v. adj.）被错误地显示在了释义里，点击下方按钮一键自动整理。</p>
+                                    <button onClick={repairData} className="w-full py-3 bg-white text-orange-600 border border-orange-200 rounded-xl font-bold shadow-sm hover:bg-orange-100 transition">🛠️ 立即修复词性格式</button>
+                                </div>
+
                                 <div className="p-6 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl text-white shadow-lg">
                                     <div className="flex items-center mb-4"><Icon name="CloudDownload" size={24} className="mr-2"/><h3 className="font-bold text-lg">云端无缝同步</h3></div>
                                     <p className="text-indigo-100 text-xs mb-6 opacity-90">将当前进度同步到云端，或从云端拉取最新进度。请确保已在设置中配置 JSONBin。</p>
@@ -1094,13 +1109,6 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                                     </div>
                                 </div>
 
-                                {/* 修复工具 */}
-                                <div className="p-5 bg-orange-50 border border-orange-100 rounded-2xl flex justify-between items-center">
-                                    <div><h3 className="font-bold text-orange-900 text-sm mb-1">词性格式修复</h3><p className="text-xs text-orange-700/70">自动拆分 v. adj. 等连在一起的释义</p></div>
-                                    <button onClick={repairData} className="px-4 py-2 bg-white text-orange-600 border border-orange-200 rounded-lg font-bold text-xs shadow-sm hover:bg-orange-100">🛠️ 修复</button>
-                                </div>
-
-                                {/* 本地备份 */}
                                 <div className="grid grid-cols-2 gap-4 pt-2">
                                     <button onClick={exportFullData} className="py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-sm flex items-center justify-center"><Icon name="Download" size={16} className="mr-2"/> 导出文件</button>
                                     <div className="relative">
