@@ -878,7 +878,7 @@
         };
 
 const ImportExport = ({ setWords, words, setView, config }) => {
-            const [activeTab, setActiveTab] = useState('text');
+            const [activeTab, setActiveTab] = useState('data'); // 默认打开数据管理
             const [textInput, setTextInput] = useState('');
             const [importMode, setImportMode] = useState('frequency');
             const [importCategory, setImportCategory] = useState('high');
@@ -889,7 +889,7 @@ const ImportExport = ({ setWords, words, setView, config }) => {
             const [aiInput, setAiInput] = useState('');
             const [isFetching, setIsFetching] = useState(false);
             const [fetchProgress, setFetchProgress] = useState({ current: 0, total: 0, success: 0, fail: 0 });
-            const [isSyncing, setIsSyncing] = useState(false); 
+            const [isSyncing, setIsSyncing] = useState(false);
 
             const getTargetCategory = () => { if (importMode === 'frequency') return importCategory; return customGroupName.trim() || `Import ${new Date().toLocaleDateString()}`; };
             
@@ -980,87 +980,79 @@ const ImportExport = ({ setWords, words, setView, config }) => {
             };
 
             const handleFile = (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { try { const content = JSON.parse(ev.target.result); if (content.type === 'KAOYAN_FULL_BACKUP' && content.storage) { if(confirm(`恢复备份将覆盖当前数据，确定吗？`)) { Object.keys(content.storage).forEach(key => { if(key.startsWith('kaoyan_')) localStorage.setItem(key, content.storage[key]); }); window.location.reload(); } return; } if (Array.isArray(content)) { if(confirm(`导入旧版单词表?`)) { setWords(content); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(content)); alert("完成"); } return; } } catch(err) { alert("错误"); } }; reader.readAsText(file); };
-            
-            const exportFullData = () => { const storage = {}; for(let i=0; i<localStorage.length; i++) { const key = localStorage.key(i); if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key); } const backup = { type: 'KAOYAN_FULL_BACKUP', version: 1.0, timestamp: Date.now(), storage }; const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; const date = new Date(); a.download = `考研词汇_备份_${date.getFullYear()}${date.getMonth()+1}${date.getDate()}.json`; a.click(); };
-
-            // --- 修复后的同步逻辑 (核心修改) ---
-            const syncToCloud = async () => {
-                const key = config.jsonbinKey ? config.jsonbinKey.trim() : "";
-                const id = config.jsonbinId ? config.jsonbinId.trim() : "";
-
-                if (!key || !id) { alert("请先配置 Cloud Key"); return; }
-                if (!confirm("⚠️ 确定上传并覆盖云端数据吗？")) return;
+            const exportFullData = async () => { 
+                const storage = {}; 
+                for(let i=0; i<localStorage.length; i++) { const key = localStorage.key(i); if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key); } 
+                const backup = { type: 'KAOYAN_FULL_BACKUP', version: 1.0, timestamp: Date.now(), storage };
+                const date = new Date();
+                const fileName = `考研备份_${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate()}.json`;
                 
-                setIsSyncing(true);
                 try {
-                    const storage = {}; 
-                    for(let i=0; i<localStorage.length; i++) { 
-                        const k = localStorage.key(i); 
-                        if(k && k.startsWith('kaoyan_')) storage[k] = localStorage.getItem(k); 
+                    const file = new File([JSON.stringify(backup, null, 2)], fileName, {type: "application/json"});
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        await navigator.share({ files: [file], title: '考研词汇备份', text: '进度备份' });
+                        return;
                     }
-                    const backup = { type: 'KAOYAN_CLOUD_SYNC', timestamp: Date.now(), storage };
-                    
-                    // 检查数据大小，超过 300KB 可能导致网络超时
-                    const payload = JSON.stringify(backup);
-                    if(payload.length > 500000) {
-                        console.warn("数据量较大，正在尝试上传...");
-                    }
+                } catch (err) { console.log("分享失败，转下载"); }
 
-                    // 关键修复：增加 X-Bin-Versioning: false 头部
-                    const res = await fetch(`https://api.jsonbin.io/v3/b/${id}`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Master-Key': key,
-                            'X-Bin-Versioning': 'false' // 👈 必须加这个，否则免费版必报错
-                        },
-                        body: payload
-                    });
-
-                    if (!res.ok) {
-                        const errData = await res.json();
-                        throw new Error(errData.message || `状态码 ${res.status}`);
-                    }
-                    alert("✅ 上传成功！");
-                } catch (e) {
-                    alert("同步失败: " + e.message + "\n\n提示：如果数据量太大，请尝试在电脑端使用 WiFi 上传。");
-                } finally {
-                    setIsSyncing(false);
-                }
+                const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"}); 
+                const url = URL.createObjectURL(blob); 
+                const a = document.createElement('a'); a.href = url; a.download = fileName; a.click(); 
             };
 
-            const syncFromCloud = async () => {
-                const key = config.jsonbinKey ? config.jsonbinKey.trim() : "";
-                const id = config.jsonbinId ? config.jsonbinId.trim() : "";
+            // --- Gitee 同步逻辑 ---
+            const toBase64 = (str) => window.btoa(unescape(encodeURIComponent(str)));
+            const fromBase64 = (str) => decodeURIComponent(escape(window.atob(str)));
+            const FILE_PATH = "backup.json";
 
-                if (!key || !id) { alert("请先配置 Cloud Key"); return; }
-                if (!confirm("⚠️ 下载将覆盖本地数据，确定吗？")) return;
-
+            const syncToGitee = async () => {
+                if (!config.giteeToken || !config.giteeOwner || !config.giteeRepo) { alert("请先去[设置]配置 Gitee 信息"); return; }
+                if (!confirm("⚠️ 确定上传并覆盖云端数据吗？")) return;
                 setIsSyncing(true);
                 try {
-                    const res = await fetch(`https://api.jsonbin.io/v3/b/${id}/latest`, {
-                        method: 'GET',
-                        headers: { 'X-Master-Key': key }
-                    });
+                    // 1. 获取 SHA
+                    const getRes = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}?access_token=${config.giteeToken}`);
+                    let sha = "";
+                    if (getRes.ok) { sha = (await getRes.json()).sha; }
 
-                    if (!res.ok) throw new Error(`下载失败: ${res.status}`);
-                    const json = await res.json();
-                    const data = json.record;
-
-                    if (data && data.storage) {
-                        Object.keys(data.storage).forEach(k => {
-                            if(k.startsWith('kaoyan_')) localStorage.setItem(k, data.storage[k]);
-                        });
-                        alert("✅ 同步成功！页面将刷新...");
-                        window.location.reload();
-                    } else {
-                        alert("云端数据为空或格式错误");
+                    // 2. 打包
+                    const storage = {};
+                    for(let i=0; i<localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key);
                     }
-                } catch (e) {
-                    alert("同步错误: " + e.message);
-                } finally {
-                    setIsSyncing(false);
-                }
+                    const rawData = JSON.stringify({ type: 'GITEE_SYNC', timestamp: Date.now(), storage });
+                    const compressed = LZString.compressToUTF16(rawData);
+                    const contentBase64 = toBase64(JSON.stringify({ compressed: true, data: compressed }));
+
+                    // 3. 上传
+                    const res = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}`, {
+                        method: sha ? 'PUT' : 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ access_token: config.giteeToken, content: contentBase64, message: "Manual sync", sha })
+                    });
+                    if(!res.ok) throw new Error("上传失败 (请检查 Token 权限或仓库名)");
+                    alert("✅ Gitee 同步成功！");
+                } catch(e) { alert(e.message); } finally { setIsSyncing(false); }
+            };
+
+            const syncFromGitee = async () => {
+                if (!config.giteeToken) { alert("请先去[设置]配置 Gitee"); return; }
+                if (!confirm("⚠️ 下载将覆盖本地数据，确定吗？")) return;
+                setIsSyncing(true);
+                try {
+                    const res = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}?access_token=${config.giteeToken}`);
+                    if(!res.ok) throw new Error("下载失败 (文件不存在或配置错误)");
+                    const json = await res.json();
+                    const fileObj = JSON.parse(fromBase64(json.content));
+                    let data = fileObj.compressed ? JSON.parse(LZString.decompressFromUTF16(fileObj.data)) : fileObj;
+                    
+                    if (data.storage) {
+                        Object.keys(data.storage).forEach(k => { if(k.startsWith('kaoyan_')) localStorage.setItem(k, data.storage[k]); });
+                        alert("✅ 数据已拉取并刷新！");
+                        window.location.reload();
+                    }
+                } catch(e) { alert(e.message); } finally { setIsSyncing(false); }
             };
 
             return (
@@ -1068,11 +1060,47 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                     <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 h-fit">
                         <h2 className="text-2xl font-bold mb-6 text-gray-800">数据中心</h2>
                         <div className="flex mb-6 border-b border-gray-100">
+                            <button onClick={() => setActiveTab('data')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='data'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>管理与同步</button>
                             <button onClick={() => setActiveTab('ai')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='ai'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>AI 速查</button>
                             <button onClick={() => setActiveTab('text')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='text'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>批量粘贴</button>
-                            <button onClick={() => setActiveTab('data')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='data'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>管理与同步</button>
                         </div>
                         
+                        {activeTab === 'data' && (
+                            <div className="space-y-6 animate-fade-in">
+                                <div className="p-5 bg-orange-50 border border-orange-100 rounded-2xl flex justify-between items-center shadow-sm">
+                                    <div><h3 className="font-bold text-orange-900 text-sm mb-1">词性格式修复</h3><p className="text-xs text-orange-700/70">自动拆分 v. adj. 等连在一起的释义</p></div>
+                                    <button onClick={repairData} className="px-4 py-2 bg-white text-orange-600 border border-orange-200 rounded-lg font-bold text-xs shadow-sm hover:bg-orange-100 transition">🛠️ 修复</button>
+                                </div>
+
+                                <div className="p-6 bg-red-50 rounded-2xl border border-red-100 shadow-sm">
+                                    <div className="flex items-center mb-4"><span className="text-2xl mr-2">🇨🇳</span><h3 className="font-bold text-red-900 text-lg">Gitee 极速同步</h3></div>
+                                    <p className="text-red-800/80 text-xs mb-4">使用国内码云仓库，速度快且稳定。请确保已在设置中填入 Token。</p>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <button onClick={syncToGitee} disabled={isSyncing} className="py-3 bg-white text-red-600 border border-red-200 rounded-xl font-bold shadow-sm hover:bg-red-50 flex flex-col items-center justify-center transition">
+                                            {isSyncing ? <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin mb-1"></div> : <Icon name="Upload" size={20} className="mb-1"/>}
+                                            <span className="text-xs">上传到 Gitee</span>
+                                        </button>
+                                        <button onClick={syncFromGitee} disabled={isSyncing} className="py-3 bg-white text-red-600 border border-red-200 rounded-xl font-bold shadow-sm hover:bg-red-50 flex flex-col items-center justify-center transition">
+                                            {isSyncing ? <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin mb-1"></div> : <Icon name="Download" size={20} className="mb-1"/>}
+                                            <span className="text-xs">从 Gitee 拉取</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 pt-2">
+                                    <button onClick={exportFullData} className="py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-sm flex items-center justify-center"><Icon name="Upload" size={16} className="mr-2"/> 分享备份</button>
+                                    <div className="relative">
+                                        <button className="w-full h-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-sm flex items-center justify-center"><Icon name="Download" size={16} className="mr-2"/> 恢复备份</button>
+                                        <input type="file" onChange={handleFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/>
+                                    </div>
+                                </div>
+
+                                <div className="pt-4 border-t border-gray-100 text-center">
+                                    <button onClick={() => {if(confirm('⚠️ 确定要清空所有数据吗？此操作不可恢复！')) { setWords([]); localStorage.clear(); window.location.reload(); }}} className="text-red-400 text-xs hover:text-red-600 underline transition">重置应用 (清空数据)</button>
+                                </div>
+                            </div>
+                        )}
+
                         {(activeTab === 'ai' || activeTab === 'text') && (
                             <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
                                 <div className="flex space-x-6 mb-4">
@@ -1087,54 +1115,16 @@ const ImportExport = ({ setWords, words, setView, config }) => {
 
                         {activeTab === 'ai' && (<div className="space-y-4"><textarea value={aiInput} onChange={e => setAiInput(e.target.value)} placeholder="输入单词..." className="w-full h-40 p-4 border rounded-xl text-sm outline-none resize-none"></textarea>{isFetching ? <div className="text-center text-sm py-3 bg-indigo-50 text-indigo-600 rounded-xl animate-pulse">AI 抓取中...</div> : <button onClick={fetchWordsFromAI} className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-2"><Icon name="CloudDownload" size={20}/> 开始</button>}</div>)}
                         {activeTab === 'text' && (<div className="space-y-4"><textarea value={textInput} onChange={e => setTextInput(e.target.value)} placeholder="格式：word n. 释义 v. 释义..." className="w-full h-48 p-4 border rounded-xl text-sm outline-none resize-none"></textarea><button onClick={parseAndImport} className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg">开始导入</button></div>)}
-                        
-                        {activeTab === 'data' && (
-                            <div className="space-y-6 animate-fade-in">
-                                <div className="p-6 bg-orange-50 border border-orange-100 rounded-2xl space-y-4">
-                                    <h3 className="font-bold text-orange-900 flex items-center"><Icon name="Sparkles" className="mr-2"/> 智能数据修复</h3>
-                                    <p className="text-sm text-orange-700/80">如果你发现某些单词的词性（如 v. adj.）被错误地显示在了释义里，点击下方按钮一键自动整理。</p>
-                                    <button onClick={repairData} className="w-full py-3 bg-white text-orange-600 border border-orange-200 rounded-xl font-bold shadow-sm hover:bg-orange-100 transition">🛠️ 立即修复词性格式</button>
-                                </div>
-
-                                <div className="p-6 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl text-white shadow-lg">
-                                    <div className="flex items-center mb-4"><Icon name="CloudDownload" size={24} className="mr-2"/><h3 className="font-bold text-lg">云端无缝同步</h3></div>
-                                    <p className="text-indigo-100 text-xs mb-6 opacity-90">将当前进度同步到云端，或从云端拉取最新进度。请确保已在设置中配置 JSONBin。</p>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <button onClick={syncToCloud} disabled={isSyncing} className="py-3 bg-white/20 hover:bg-white/30 border border-white/30 rounded-xl font-bold backdrop-blur-sm transition flex flex-col items-center justify-center">
-                                            {isSyncing ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mb-1"></div> : <Icon name="Upload" size={20} className="mb-1"/>}
-                                            <span className="text-xs">上传至云端</span>
-                                        </button>
-                                        <button onClick={syncFromCloud} disabled={isSyncing} className="py-3 bg-white text-indigo-600 hover:bg-gray-50 rounded-xl font-bold shadow-sm transition flex flex-col items-center justify-center">
-                                            {isSyncing ? <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mb-1"></div> : <Icon name="Download" size={20} className="mb-1"/>}
-                                            <span className="text-xs">从云端下载</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4 pt-2">
-                                    <button onClick={exportFullData} className="py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-sm flex items-center justify-center"><Icon name="Download" size={16} className="mr-2"/> 导出文件</button>
-                                    <div className="relative">
-                                        <button className="w-full h-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-sm flex items-center justify-center"><Icon name="Upload" size={16} className="mr-2"/> 恢复文件</button>
-                                        <input type="file" onChange={handleFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/>
-                                    </div>
-                                </div>
-
-                                <div className="pt-4 border-t border-gray-100 text-center">
-                                    <button onClick={() => {if(confirm('⚠️ 确定要清空所有数据吗？此操作不可恢复！')) { setWords([]); localStorage.clear(); window.location.reload(); }}} className="text-red-400 text-xs hover:text-red-600 underline">重置应用 (清空数据)</button>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 </div>
             );
         };
 
-   const SettingsPanel = ({ config, setConfig, setView }) => {
+  const SettingsPanel = ({ config, setConfig, setView }) => {
             const [selectedPreset, setSelectedPreset] = useState('deepseek');
-            const [modelList, setModelList] = useState([]);
-            const [modelSearch, setModelSearch] = useState('');
             const [isFetchingModels, setIsFetchingModels] = useState(false);
 
+            // AI设置相关逻辑保留...
             useEffect(() => {
                 const matchedKey = Object.keys(API_PRESETS).find(key => {
                     const preset = API_PRESETS[key];
@@ -1147,37 +1137,9 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                 setSelectedPreset(key);
                 const preset = API_PRESETS[key];
                 setConfig(prev => ({ ...prev, type: preset.type, baseUrl: preset.url }));
-                setModelList([]);
             };
 
             const updateConfigTrimmed = (key, value) => setConfig(prev => ({ ...prev, [key]: value.trim() }));
-
-            const fetchModels = async () => {
-                if (!config.apiKey) { alert("请先填写 API Key"); return; }
-                setIsFetchingModels(true);
-                setModelList([]);
-                try {
-                    let fetchedModels = [];
-                    if (config.type === 'google') {
-                        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${config.apiKey.trim()}`);
-                        if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-                        const data = await res.json();
-                        if (data.models) fetchedModels = data.models.map(m => m.name.replace(/^models\//, ''));
-                    } else {
-                        let baseUrl = config.baseUrl.replace(/\/$/, "");
-                        if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel") && !baseUrl.includes("lingyiwanwu") && !baseUrl.includes("siliconflow")) baseUrl += "/v1";
-                        const res = await fetch(`${baseUrl}/models`, { headers: { 'Authorization': `Bearer ${config.apiKey.trim()}` } });
-                        if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-                        const data = await res.json();
-                        if (data.data && Array.isArray(data.data)) fetchedModels = data.data.map(m => m.id);
-                    }
-                    if (fetchedModels.length > 0) { setModelList(fetchedModels); alert(`成功获取 ${fetchedModels.length} 个模型！`); } 
-                    else alert("未获取到模型列表");
-                } catch (e) { alert(`获取失败: ${e.message}`); } 
-                finally { setIsFetchingModels(false); }
-            };
-
-            const filteredModels = modelList.filter(m => m.toLowerCase().includes(modelSearch.toLowerCase()));
 
             return (
                 <div className="flex-1 overflow-y-auto custom-scroll bg-gray-50 p-4 flex justify-center">
@@ -1185,28 +1147,39 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                         <h2 className="text-xl font-bold border-b border-gray-100 pb-4 text-gray-800">设置</h2>
                         
                         {/* 自动同步开关 */}
-                        <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex items-center justify-between">
+                        <div className="bg-red-50 p-4 rounded-xl border border-red-100 flex items-center justify-between">
                             <div>
-                                <h3 className="font-bold text-indigo-900">全自动云同步</h3>
-                                <p className="text-xs text-indigo-600 mt-1">数据变动 3 秒后自动静默上传，启动时自动拉取。</p>
+                                <h3 className="font-bold text-red-900 flex items-center"><span className="mr-1">🇨🇳</span> Gitee 极速同步</h3>
+                                <p className="text-xs text-red-700 mt-1">使用国内服务器，彻底解决连接失败问题。</p>
                             </div>
                             <label className="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" checked={config.autoSync || false} onChange={e => setConfig({...config, autoSync: e.target.checked})} className="sr-only peer"/>
-                                <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
                             </label>
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">JSONBin Master Key</label>
-                            <input value={config.jsonbinKey || ''} onChange={e => updateConfigTrimmed('jsonbinKey', e.target.value)} type="password" placeholder="$2b$10..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-indigo-500 transition font-mono"/>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">Bin ID</label>
-                            <input value={config.jsonbinId || ''} onChange={e => updateConfigTrimmed('jsonbinId', e.target.value)} placeholder="656..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-indigo-500 transition font-mono"/>
+                        {/* Gitee 设置 */}
+                        <div className="space-y-4">
+                            <h3 className="text-sm font-bold text-gray-500 uppercase">Gitee 配置</h3>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 mb-1">私人令牌 (Access Token)</label>
+                                <input value={config.giteeToken || ''} onChange={e => updateConfigTrimmed('giteeToken', e.target.value)} type="password" placeholder="例如: 8d9a..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-red-500 transition font-mono text-sm"/>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 mb-1">用户名 (Owner)</label>
+                                    <input value={config.giteeOwner || ''} onChange={e => updateConfigTrimmed('giteeOwner', e.target.value)} placeholder="例如: zhangsan" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-red-500 transition font-mono text-sm"/>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 mb-1">仓库名 (Repo)</label>
+                                    <input value={config.giteeRepo || ''} onChange={e => updateConfigTrimmed('giteeRepo', e.target.value)} placeholder="例如: vocab_backup" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-red-500 transition font-mono text-sm"/>
+                                </div>
+                            </div>
+                            <p className="text-[10px] text-gray-400">数据将自动保存在仓库的 <code>backup.json</code> 文件中。</p>
                         </div>
 
                         <div className="border-t pt-4">
-                            <label className="block text-sm font-bold text-gray-700 mb-2">AI 服务商</label>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">AI 设置</label>
                             <select value={selectedPreset} onChange={(e) => handlePresetChange(e.target.value)} className="w-full border border-gray-200 p-3 rounded-xl bg-white outline-none mb-3">
                                 {Object.entries(API_PRESETS).map(([key, val]) => (<option key={key} value={key}>{val.name}</option>))}
                             </select>
@@ -1224,86 +1197,116 @@ const ImportExport = ({ setWords, words, setView, config }) => {
         };
         
        // --- 自动同步 Hook (核心黑科技) ---
+      // --- Gitee Auto Sync Hook (国内极速版) ---
         const useAutoSync = (words, setWords, config) => {
-            const [syncStatus, setSyncStatus] = useState('idle'); // idle, pending, syncing, success, error
+            const [syncStatus, setSyncStatus] = useState('idle');
             const [lastSyncTime, setLastSyncTime] = useState(0);
             const timerRef = useRef(null);
 
+            const FILE_PATH = "backup.json"; // 固定文件名
+
             // 1. 启动拉取
             useEffect(() => {
-                if (config.autoSync && config.jsonbinKey && config.jsonbinId) {
-                    pullFromCloud(true);
+                if (config.autoSync && config.giteeToken && config.giteeOwner && config.giteeRepo) {
+                    pullFromGitee(true);
                 }
             }, []);
 
-            // 2. 自动上传 (防抖3秒)
+            // 2. 自动上传
             useEffect(() => {
-                if (!config.autoSync || !config.jsonbinKey || !config.jsonbinId || words.length === 0) return;
-                
-                // 如果刚拉取完 5秒内不要反向上传
+                if (!config.autoSync || !config.giteeToken || !config.giteeOwner || !config.giteeRepo || words.length === 0) return;
                 if (Date.now() - lastSyncTime < 5000) return;
 
                 setSyncStatus('pending');
                 if (timerRef.current) clearTimeout(timerRef.current);
                 
                 timerRef.current = setTimeout(() => {
-                    pushToCloud();
+                    pushToGitee();
                 }, 3000);
 
                 return () => clearTimeout(timerRef.current);
             }, [words, config]);
 
-            const pushToCloud = async () => {
+            // 辅助：Unicode 转 Base64 (解决中文乱码)
+            const toBase64 = (str) => {
+                return window.btoa(unescape(encodeURIComponent(str)));
+            };
+            const fromBase64 = (str) => {
+                return decodeURIComponent(escape(window.atob(str)));
+            };
+
+            const pushToGitee = async () => {
                 setSyncStatus('syncing');
                 try {
+                    // 1. 先获取文件的 SHA (Gitee 更新文件必须带 SHA)
+                    const getRes = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}?access_token=${config.giteeToken}`);
+                    let sha = "";
+                    if (getRes.ok) {
+                        const getData = await getRes.json();
+                        sha = getData.sha;
+                    }
+
+                    // 2. 准备数据
                     const storage = {};
                     for(let i=0; i<localStorage.length; i++) {
                         const key = localStorage.key(i);
                         if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key);
                     }
-                    const rawData = JSON.stringify({ type: 'AUTO_SYNC', timestamp: Date.now(), storage });
-                    // 核心：压缩数据！
+                    const rawData = JSON.stringify({ type: 'GITEE_SYNC', timestamp: Date.now(), storage });
+                    
+                    // 3. 压缩并编码
                     const compressed = LZString.compressToUTF16(rawData);
+                    const contentBase64 = toBase64(JSON.stringify({ compressed: true, data: compressed }));
 
-                    const res = await fetch(`https://api.jsonbin.io/v3/b/${config.jsonbinId.trim()}`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Master-Key': config.jsonbinKey.trim(),
-                            'X-Bin-Versioning': 'false' // 核心：关闭版本控制，防止403
-                        },
-                        body: JSON.stringify({ kaoyan_compressed: true, content: compressed })
+                    // 4. 上传
+                    const body = {
+                        access_token: config.giteeToken,
+                        content: contentBase64,
+                        message: "Auto sync from App",
+                        sha: sha // 如果是新建文件，SHA 为空即可(但Gitee API新建和更新略有不同，这里简化处理，若404则走新建逻辑)
+                    };
+                    
+                    // 如果文件不存在(404)，Gitee要求POST新建；如果存在，PUT更新
+                    const method = sha ? 'PUT' : 'POST';
+                    
+                    const res = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}`, {
+                        method: method,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
                     });
 
-                    if (!res.ok) throw new Error("Upload failed");
+                    if (!res.ok) throw new Error("Gitee Upload Failed");
                     setSyncStatus('success');
                     setLastSyncTime(Date.now());
                     setTimeout(() => setSyncStatus('idle'), 2000);
                 } catch (e) {
-                    console.error("AutoSync Error:", e);
+                    console.error(e);
                     setSyncStatus('error');
                 }
             };
 
-            const pullFromCloud = async (isInit = false) => {
+            const pullFromGitee = async (isInit = false) => {
                 setSyncStatus('syncing');
                 try {
-                    const res = await fetch(`https://api.jsonbin.io/v3/b/${config.jsonbinId.trim()}/latest`, {
-                        method: 'GET',
-                        headers: { 'X-Master-Key': config.jsonbinKey.trim() }
-                    });
-                    if (!res.ok) throw new Error("Download failed");
+                    // 1. 获取文件内容
+                    const res = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}?access_token=${config.giteeToken}`);
+                    if (!res.ok) throw new Error("Gitee Download Failed");
+                    
                     const json = await res.json();
-                    let data = json.record;
+                    // Gitee 返回的 content 是 Base64 编码的
+                    const fileContent = fromBase64(json.content);
+                    const fileObj = JSON.parse(fileContent);
 
-                    if (data.kaoyan_compressed) {
-                        const decompressed = LZString.decompressFromUTF16(data.content);
-                        if (decompressed) data = JSON.parse(decompressed);
+                    let data = null;
+                    if (fileObj.compressed) {
+                        const decompressed = LZString.decompressFromUTF16(fileObj.data);
+                        data = JSON.parse(decompressed);
+                    } else {
+                        data = fileObj;
                     }
 
                     if (data && data.storage) {
                         const localTime = parseInt(localStorage.getItem('kaoyan_sync_time') || '0');
-                        // 如果云端数据还没本地新，就不覆盖
                         if (isInit && data.timestamp <= localTime) {
                             setSyncStatus('idle');
                             return;
@@ -1318,16 +1321,16 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                         
                         setSyncStatus('success');
                         setLastSyncTime(Date.now());
-                        if(isInit) alert("☁️ 云端进度已同步！");
+                        if(isInit) alert("🚀 Gitee 同步成功！");
                         setTimeout(() => setSyncStatus('idle'), 2000);
                     }
                 } catch (e) {
-                    console.error("AutoSync Pull Error:", e);
+                    console.error(e);
                     setSyncStatus('error');
                 }
             };
 
-            return { syncStatus };
+            return { syncStatus, pushToGitee, pullFromGitee }; // 暴露手动触发方法
         };
 
         // 主组件
