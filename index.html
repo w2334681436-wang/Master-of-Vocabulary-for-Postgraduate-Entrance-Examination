@@ -152,7 +152,7 @@
             }
         };
 
-      const WordChat = ({ word, onClose, config }) => {
+   const WordChat = ({ word, onClose, config }) => {
             const [messages, setMessages] = useState([]);
             const [input, setInput] = useState("");
             const [isLoading, setIsLoading] = useState(false);
@@ -161,9 +161,9 @@
             const [showColorPicker, setShowColorPicker] = useState(false);
             const messagesEndRef = useRef(null);
 
-            // 🔥 新增：音频播放状态管理
-            const [playingIdx, setPlayingIdx] = useState(null); // 当前正在播放的消息索引
-            const audioRef = useRef(null); // 也就是当前的 Audio 对象或 SpeechSynthesis
+            // 音频状态管理（保留上一轮的优化）
+            const [playingIdx, setPlayingIdx] = useState(null);
+            const audioRef = useRef(null);
 
             const colors = [
                 { name: "Indigo", class: "bg-indigo-600" },
@@ -177,12 +177,8 @@
             const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
             useEffect(() => { scrollToBottom(); }, [messages]);
 
-            // 🔥 新增：组件卸载时强制停止所有音频
-            useEffect(() => {
-                return () => stopAudio();
-            }, []);
+            useEffect(() => { return () => stopAudio(); }, []);
 
-            // 🔥 核心功能：停止当前音频
             const stopAudio = () => {
                 if (audioRef.current) {
                     if (audioRef.current instanceof Audio) {
@@ -196,61 +192,33 @@
                 setPlayingIdx(null);
             };
 
-            // 🔥 核心功能：播放/暂停逻辑
             const toggleAudio = (text, idx) => {
-                // 1. 如果点击的是当前正在播放的 -> 暂停/停止
-                if (playingIdx === idx) {
-                    stopAudio();
-                    return;
-                }
-
-                // 2. 如果点击了新的 -> 先停止旧的
+                if (playingIdx === idx) { stopAudio(); return; }
                 stopAudio();
-
-                // 3. 开始播放新的
                 setPlayingIdx(idx);
-                
-                // --- 声音优化策略 ---
-                // 策略A: 如果是短句 (< 200字符)，尝试用 Google 翻译接口 (声音更自然)
-                // 策略B: 如果是长文，使用浏览器语音，但筛选最佳语音包
-                
-                const cleanText = text.replace(/[\*\#\-\>]/g, ''); // 清理 Markdown 符号
-
+                const cleanText = text.replace(/[\*\#\-\>]/g, '');
                 if (cleanText.length < 200) {
-                    // 使用 Google Translate TTS (非官方但稳定，效果好)
                     const audio = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q=${encodeURIComponent(cleanText)}`);
                     audioRef.current = audio;
-                    
                     audio.onended = () => setPlayingIdx(null);
-                    audio.onerror = () => {
-                        // 如果加载失败（网络问题），回退到浏览器语音
-                        playSystemTTS(cleanText, idx);
-                    };
-                    audio.play().catch(e => playSystemTTS(cleanText, idx)); // 无法自动播放则回退
+                    audio.onerror = () => playSystemTTS(cleanText, idx);
+                    audio.play().catch(e => playSystemTTS(cleanText, idx));
                 } else {
                     playSystemTTS(cleanText, idx);
                 }
             };
 
-            // 辅助：使用系统语音（筛选最好听的声音）
             const playSystemTTS = (text, idx) => {
                 window.speechSynthesis.cancel();
                 const u = new SpeechSynthesisUtterance(text);
                 u.lang = 'en-US';
                 u.rate = 1.0; 
-                
-                // 🕵️‍♀️ 寻找最好听的语音包 (Google > Microsoft > System)
                 const voices = window.speechSynthesis.getVoices();
-                const bestVoice = voices.find(v => v.name.includes("Google US English")) || 
-                                  voices.find(v => v.name.includes("Google")) || 
-                                  voices.find(v => v.name.includes("Microsoft Zira")) ||
-                                  voices.find(v => v.lang === 'en-US');
+                const bestVoice = voices.find(v => v.name.includes("Google US English")) || voices.find(v => v.name.includes("Google")) || voices.find(v => v.name.includes("Microsoft Zira")) || voices.find(v => v.lang === 'en-US');
                 if (bestVoice) u.voice = bestVoice;
-
                 u.onend = () => setPlayingIdx(null);
                 u.onerror = () => setPlayingIdx(null);
-                
-                audioRef.current = u; // 标记当前是 TTS
+                audioRef.current = u;
                 window.speechSynthesis.speak(u);
             };
 
@@ -284,7 +252,7 @@
                     setMessages(prev => [...prev, { role: "assistant", content: "..." }]);
                     
                     let baseUrl = config.baseUrl.replace(/\/$/, "");
-                    if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel") && !baseUrl.includes("lingyiwanwu")) baseUrl += "/v1";
+                    if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel")) baseUrl += "/v1";
 
                     const response = await fetch(`${baseUrl}/chat/completions`, {
                         method: "POST",
@@ -318,8 +286,11 @@
             };
 
             return (
-                <div className="fixed inset-0 z-[60] flex flex-col bg-white md:max-w-md md:mx-auto md:my-4 md:rounded-2xl md:shadow-2xl md:border md:border-gray-200 overflow-hidden animate-slide-up">
-                    <div className="flex justify-between items-center p-4 border-b bg-white z-10 shadow-sm">
+                // 🔥 核心修改：布局逻辑重写
+                // Mobile: fixed inset-0 (全屏)
+                // Tablet/PC (md): 居中弹窗，宽度 90vw (最大 4xl), 高度 85vh
+                <div className="fixed inset-0 z-[60] flex flex-col bg-white md:fixed md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[90vw] md:max-w-4xl md:h-[85vh] md:rounded-2xl md:shadow-2xl md:border md:border-gray-200 overflow-hidden animate-slide-up">
+                    <div className="flex justify-between items-center p-4 border-b bg-white z-10 shadow-sm flex-shrink-0">
                         <div className="flex flex-col">
                             <h3 className="font-bold text-lg text-gray-800 flex items-center">{word} <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded">AI 私教</span></h3>
                             <div className="flex gap-2 mt-2">
@@ -338,13 +309,14 @@
                             <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-400"><Icon name="X" size={24}/></button>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-4 space-y-5 bg-gray-50 custom-scroll" onClick={()=>setShowColorPicker(false)}>
+                    <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 bg-gray-50 custom-scroll" onClick={()=>setShowColorPicker(false)}>
                         {messages.map((msg, idx) => (
                             <div key={idx} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`flex flex-col max-w-[90%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                    <div className={`p-3.5 rounded-2xl text-sm md:text-base leading-relaxed shadow-sm relative group ${msg.role === 'user' ? 'bg-white text-gray-800 border border-gray-100 rounded-tr-none' : `${bubbleColor} text-white rounded-tl-none markdown-body`} ${msg.role === 'error' ? 'bg-red-50 text-red-600 border-red-200' : ''}`}>
+                                {/* 🔥 修改：气泡最大宽度调整，防止在大屏上太长，但在手机上铺满 */}
+                                <div className={`flex flex-col max-w-[95%] md:max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                    {/* 🔥 修改：添加 break-words 和 whitespace-pre-wrap 确保文字和代码块自动换行，绝不出现横向滚动条 */}
+                                    <div className={`p-3.5 md:p-5 rounded-2xl text-sm md:text-base leading-relaxed shadow-sm relative group break-words whitespace-pre-wrap ${msg.role === 'user' ? 'bg-white text-gray-800 border border-gray-100 rounded-tr-none' : `${bubbleColor} text-white rounded-tl-none markdown-body`} ${msg.role === 'error' ? 'bg-red-50 text-red-600 border-red-200' : ''}`}>
                                         {msg.role === 'assistant' ? <div dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }} /> : msg.content}
-                                        {/* 🔥 修改：播放按钮逻辑 */}
                                         {msg.role === 'assistant' && msg.content !== '...' && (
                                             <button onClick={(e) => {e.stopPropagation(); toggleAudio(msg.content, idx);}} className={`absolute -right-8 bottom-0 p-1.5 text-gray-400 hover:text-indigo-600 bg-white/50 rounded-full hover:bg-white transition shadow-sm ${playingIdx === idx ? 'text-indigo-600 bg-white ring-2 ring-indigo-100' : ''}`}>
                                                 {playingIdx === idx ? <Icon name="Pause" size={16}/> : <Icon name="Volume2" size={16}/>}
@@ -356,7 +328,7 @@
                         ))}
                         <div ref={messagesEndRef} />
                     </div>
-                    <div className="p-3 bg-white border-t flex items-end gap-2 safe-bottom">
+                    <div className="p-3 bg-white border-t flex items-end gap-2 safe-bottom flex-shrink-0">
                         <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => {if(e.key==='Enter' && !e.shiftKey){e.preventDefault(); handleSend();}}} placeholder="继续追问..." className="flex-1 max-h-32 p-3 bg-gray-50 border-0 rounded-xl focus:ring-2 focus:ring-indigo-100 outline-none resize-none text-sm" rows="1"></textarea>
                         <button onClick={(e)=>handleSend(e)} disabled={isLoading || !input.trim()} className={`p-3 rounded-xl text-white shadow-md transition-all ${isLoading || !input.trim() ? 'bg-gray-300' : bubbleColor} active:scale-95`}>{isLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Icon name="Send" size={20} />}</button>
                     </div>
