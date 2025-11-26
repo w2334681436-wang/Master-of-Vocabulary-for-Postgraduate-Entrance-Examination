@@ -16,6 +16,7 @@
     <script crossorigin src="https://cdn.staticfile.net/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script crossorigin src="https://cdn.staticfile.net/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.staticfile.net/lz-string/1.4.4/lz-string.min.js"></script>
 
     <style>
         body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; user-select: none; }
@@ -66,35 +67,34 @@
         const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
         // --- Icons ---
-        const Icons = {
-            Book: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
-            Search: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>,
-            Brain: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>,
-            Volume2: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>,
-            Eye: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>,
-            EyeOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>,
-            Sparkles: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 3v4"/><path d="M3 5h4"/><path d="M3 9h4"/></svg>,
-            List: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>,
-            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
-            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.39a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
-            Upload: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
-            Sort: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>,
-            Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
-            Trash2: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>,
-            ArrowLeft: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>,
-            Maximize: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>,
-            Minimize: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>,
-            CloudDownload: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></svg>,
-            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
-            Folder: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>,
-            FolderInput: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 2H4a2 2 0 0 0-2 2Z"/><path d="m10 13 2 2 4-4"/></svg>,
-            Move: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3"/></svg>,
-            Edit: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
-            MessageCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>,
-            Send: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
-            Zap: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
-            BookOpen: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
-            Palette: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+     const Icons = {
+            Book: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
+            CloudCheck: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 15l2 2 4-4"/><path d="M19 17a5 5 0 0 0 0-10c-5.523 0-10 4.477-10 10"/></svg>,
+            CloudUpload: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/><path d="M19 17a5 5 0 0 0 0-10c-5.523 0-10 4.477-10 10"/></svg>,
+            CloudOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 7h1.8a5 5 0 0 0 .68 9.08"/><line x1="2" y1="2" x2="22" y2="22"/></svg>,
+            Brain: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>,
+            List: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>,
+            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>,
+            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.39a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
+            Upload: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+            Sort: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>,
+            Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+            Trash2: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>,
+            ArrowLeft: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>,
+            Maximize: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>,
+            Minimize: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>,
+            CloudDownload: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></svg>,
+            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
+            Folder: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>,
+            FolderInput: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 2H4a2 2 0 0 0-2 2Z"/><path d="m10 13 2 2 4-4"/></svg>,
+            Move: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3"/></svg>,
+            Edit: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+            MessageCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>,
+            Send: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
+            Zap: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+            BookOpen: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
+            Palette: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>,
+            Refresh: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg>
         };
 
         const Icon = ({ name, size = 20, className = "" }) => {
@@ -346,35 +346,37 @@
         };
         // --- Components ---
 
-        const Navbar = ({ view, setView, goBack }) => {
-            const [isFullscreen, setIsFullscreen] = useState(false);
-            const toggleFullScreen = () => {
-                if (!document.fullscreenElement) { document.documentElement.requestFullscreen().catch(console.log); setIsFullscreen(true); }
-                else { if (document.exitFullscreen) { document.exitFullscreen(); setIsFullscreen(false); } }
+        const Navbar = ({ view, setView, syncStatus }) => {
+            const getStatusIcon = () => {
+                switch(syncStatus) {
+                    case 'syncing': return <span className="animate-spin text-white"><Icon name="Refresh" size={16}/></span>;
+                    case 'success': return <span className="text-green-300"><Icon name="CloudCheck" size={18}/></span>;
+                    case 'error': return <span className="text-red-300"><Icon name="CloudOff" size={18}/></span>;
+                    case 'pending': return <span className="text-yellow-300 animate-pulse"><Icon name="CloudUpload" size={18}/></span>;
+                    default: return null;
+                }
             };
-            useEffect(() => {
-                const handleChange = () => setIsFullscreen(!!document.fullscreenElement);
-                document.addEventListener('fullscreenchange', handleChange);
-                return () => document.removeEventListener('fullscreenchange', handleChange);
-            }, []);
-            const showBack = view.startsWith('group_list') || view === 'study';
-            
+
             return (
                 <nav className="bg-indigo-600 text-white shadow-md sticky top-0 z-50 safe-top transition-all duration-300 flex-shrink-0">
                     <div className="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
-                        <div className="flex items-center space-x-3 font-bold text-lg cursor-pointer hover:opacity-90 transition" onClick={() => setView('home')}>
-                            {showBack ? <button onClick={(e) => {e.stopPropagation(); goBack();}} className="p-1.5 hover:bg-indigo-500 rounded-full transition"><Icon name="ArrowLeft" size={24}/></button> : <Icon name="Book" size={24}/>}
-                            <span className="tracking-wide">考研词汇大师</span>
+                        <div className="flex items-center space-x-2" onClick={() => setView('home')}>
+                            <div className="font-bold text-lg cursor-pointer flex items-center space-x-2">
+                                <Icon name="Book" size={24}/>
+                                <span className="tracking-wide hidden sm:inline">考研词汇大师</span>
+                            </div>
+                            {/* 状态灯 */}
+                            {syncStatus && syncStatus !== 'idle' && (
+                                <div className="ml-2 p-1.5 bg-indigo-800/50 rounded-full flex items-center justify-center border border-indigo-500/30" title="云同步状态">
+                                    {getStatusIcon()}
+                                </div>
+                            )}
                         </div>
-                        <div className="flex space-x-1 sm:space-x-2 items-center">
-                            <button onClick={toggleFullScreen} className="p-2 rounded-full hover:bg-indigo-500 transition hidden sm:block" title="全屏">
-                                {isFullscreen ? <Icon name="Minimize" /> : <Icon name="Maximize" />}
-                            </button>
-                            <div className="h-6 w-px bg-indigo-400 mx-2 hidden sm:block"></div>
-                            <button onClick={() => setView('home')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'home' ? 'bg-indigo-800 shadow-inner' : ''}`} title="首页"><Icon name="Brain" /></button>
-                            <button onClick={() => setView('list')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'list' ? 'bg-indigo-800 shadow-inner' : ''}`} title="列表"><Icon name="List" /></button>
-                            <button onClick={() => setView('import')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'import' ? 'bg-indigo-800 shadow-inner' : ''}`} title="导入"><Icon name="Upload" /></button>
-                            <button onClick={() => setView('settings')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'settings' ? 'bg-indigo-800 shadow-inner' : ''}`} title="设置"><Icon name="Settings" /></button>
+                        <div className="flex space-x-1 items-center">
+                            <button onClick={() => setView('home')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'home' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Brain" /></button>
+                            <button onClick={() => setView('list')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'list' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="List" /></button>
+                            <button onClick={() => setView('import')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'import' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Upload" /></button>
+                            <button onClick={() => setView('settings')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'settings' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Settings" /></button>
                         </div>
                     </div>
                 </nav>
@@ -1132,7 +1134,6 @@ const ImportExport = ({ setWords, words, setView, config }) => {
             const [modelList, setModelList] = useState([]);
             const [modelSearch, setModelSearch] = useState('');
             const [isFetchingModels, setIsFetchingModels] = useState(false);
-            const [isTestingCloud, setIsTestingCloud] = useState(false);
 
             useEffect(() => {
                 const matchedKey = Object.keys(API_PRESETS).find(key => {
@@ -1149,10 +1150,7 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                 setModelList([]);
             };
 
-            // 自动去除空格的辅助函数
-            const updateConfigTrimmed = (key, value) => {
-                setConfig(prev => ({ ...prev, [key]: value.trim() }));
-            };
+            const updateConfigTrimmed = (key, value) => setConfig(prev => ({ ...prev, [key]: value.trim() }));
 
             const fetchModels = async () => {
                 if (!config.apiKey) { alert("请先填写 API Key"); return; }
@@ -1179,112 +1177,166 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                 finally { setIsFetchingModels(false); }
             };
 
-            const testCloudConnection = async () => {
-                if (!config.jsonbinKey || !config.jsonbinId) { alert("请先填入 Master Key 和 Bin ID"); return; }
-                setIsTestingCloud(true);
-                try {
-                    // 尝试读取 Bin 的元数据
-                    const res = await fetch(`https://api.jsonbin.io/v3/b/${config.jsonbinId.trim()}/latest`, {
-                        method: 'GET',
-                        headers: { 'X-Master-Key': config.jsonbinKey.trim() }
-                    });
-                    
-                    if (res.status === 200) {
-                        alert("✅ 连接成功！\n配置正确，可以正常同步。");
-                    } else if (res.status === 401 || res.status === 403) {
-                        alert("❌ 权限错误 (401/403)\n请检查 Master Key 是否正确。");
-                    } else if (res.status === 404) {
-                        alert("❌ 找不到 Bin (404)\n请检查 Bin ID 是否填错。");
-                    } else {
-                        alert(`❌ 连接失败: HTTP ${res.status}`);
-                    }
-                } catch (e) {
-                    alert("❌ 网络错误: Failed to fetch\n请检查：\n1. 魔法是否开启\n2. 是否为全局模式\n3. Key 中是否含有特殊符号");
-                } finally {
-                    setIsTestingCloud(false);
-                }
-            };
-
             const filteredModels = modelList.filter(m => m.toLowerCase().includes(modelSearch.toLowerCase()));
 
             return (
                 <div className="flex-1 overflow-y-auto custom-scroll bg-gray-50 p-4 flex justify-center">
-                    <div className="w-full max-w-xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 h-fit space-y-8">
+                    <div className="w-full max-w-xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 h-fit space-y-6">
+                        <h2 className="text-xl font-bold border-b border-gray-100 pb-4 text-gray-800">设置</h2>
                         
-                        {/* 1. AI 设置区域 */}
-                        <div className="space-y-6">
-                            <h2 className="text-xl font-bold border-b border-gray-100 pb-2 text-gray-800 flex items-center"><Icon name="Brain" size={22} className="mr-2 text-indigo-600"/> AI 设置</h2>
+                        {/* 自动同步开关 */}
+                        <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex items-center justify-between">
                             <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">服务商</label>
-                                <div className="relative">
-                                    <select value={selectedPreset} onChange={(e) => handlePresetChange(e.target.value)} className="w-full border border-gray-200 p-3 rounded-xl appearance-none bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition">
-                                        {Object.entries(API_PRESETS).map(([key, val]) => (<option key={key} value={key}>{val.name}</option>))}
-                                    </select>
-                                    <div className="absolute right-3 top-3.5 text-gray-400 pointer-events-none"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
-                                </div>
+                                <h3 className="font-bold text-indigo-900">全自动云同步</h3>
+                                <p className="text-xs text-indigo-600 mt-1">数据变动 3 秒后自动静默上传，启动时自动拉取。</p>
                             </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" checked={config.autoSync || false} onChange={e => setConfig({...config, autoSync: e.target.checked})} className="sr-only peer"/>
+                                <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                            </label>
+                        </div>
 
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">JSONBin Master Key</label>
+                            <input value={config.jsonbinKey || ''} onChange={e => updateConfigTrimmed('jsonbinKey', e.target.value)} type="password" placeholder="$2b$10..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-indigo-500 transition font-mono"/>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">Bin ID</label>
+                            <input value={config.jsonbinId || ''} onChange={e => updateConfigTrimmed('jsonbinId', e.target.value)} placeholder="656..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-indigo-500 transition font-mono"/>
+                        </div>
+
+                        <div className="border-t pt-4">
+                            <label className="block text-sm font-bold text-gray-700 mb-2">AI 服务商</label>
+                            <select value={selectedPreset} onChange={(e) => handlePresetChange(e.target.value)} className="w-full border border-gray-200 p-3 rounded-xl bg-white outline-none mb-3">
+                                {Object.entries(API_PRESETS).map(([key, val]) => (<option key={key} value={key}>{val.name}</option>))}
+                            </select>
                             <div className={selectedPreset === 'google' ? 'hidden' : 'block'}>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">API Endpoint</label>
-                                <input value={config.baseUrl} onChange={e => updateConfigTrimmed('baseUrl', e.target.value)} className={`w-full border border-gray-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition ${selectedPreset !== 'custom' ? 'bg-gray-100 text-gray-500' : 'bg-gray-50'}`} disabled={selectedPreset !== 'custom'}/>
+                                <input value={config.baseUrl} onChange={e => updateConfigTrimmed('baseUrl', e.target.value)} className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 mb-3" placeholder="Base URL" disabled={selectedPreset !== 'custom'}/>
                             </div>
-
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">API Key</label>
-                                <input value={config.apiKey} onChange={e => updateConfigTrimmed('apiKey', e.target.value)} type="password" placeholder="sk-..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
-                            </div>
-
-                            <div>
-                                <div className="flex justify-between items-center mb-2">
-                                    <label className="block text-sm font-bold text-gray-700">模型名称</label>
-                                    <button onClick={fetchModels} disabled={isFetchingModels || !config.apiKey} className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg font-medium hover:bg-indigo-100 transition disabled:opacity-50">{isFetchingModels ? "获取中..." : "获取列表"}</button>
-                                </div>
-                                <input value={config.model} onChange={e => updateConfigTrimmed('model', e.target.value)} placeholder="例如: deepseek-chat" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
-                            </div>
+                            <input value={config.apiKey} onChange={e => updateConfigTrimmed('apiKey', e.target.value)} type="password" placeholder="AI API Key" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 mb-3"/>
+                            <input value={config.model} onChange={e => updateConfigTrimmed('model', e.target.value)} placeholder="Model Name" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50"/>
                         </div>
 
-                        {/* 2. 云同步设置区域 (新增测试按钮) */}
-                        <div className="space-y-6 pt-2">
-                            <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                                <h2 className="text-xl font-bold text-gray-800 flex items-center"><Icon name="CloudDownload" size={22} className="mr-2 text-indigo-600"/> 云同步设置</h2>
-                                <button onClick={testCloudConnection} disabled={isTestingCloud} className="text-xs bg-green-50 text-green-700 px-3 py-1.5 rounded-lg font-bold hover:bg-green-100 transition flex items-center">
-                                    {isTestingCloud ? <span className="animate-spin mr-1">⏳</span> : <span className="mr-1">🔗</span>} 测试连接
-                                </button>
-                            </div>
-                            
-                            <div className="bg-indigo-50 p-3 rounded-lg text-xs text-indigo-800 leading-relaxed">
-                                请填入 JSONBin.io 的信息。代码已自动开启防误触保护（自动去除首尾空格）。
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">Master Key (X-Master-Key)</label>
-                                <input value={config.jsonbinKey || ''} onChange={e => updateConfigTrimmed('jsonbinKey', e.target.value)} type="password" placeholder="$2b$10..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">Bin ID</label>
-                                <input value={config.jsonbinId || ''} onChange={e => updateConfigTrimmed('jsonbinId', e.target.value)} placeholder="656..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
-                            </div>
-                        </div>
-
-                        {/* 3. 其他设置 */}
-                        <div className="space-y-6 pt-2">
-                            <h2 className="text-xl font-bold border-b border-gray-100 pb-2 text-gray-800 flex items-center"><Icon name="Settings" size={22} className="mr-2 text-indigo-600"/> 其他</h2>
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">单组单词量</label>
-                                <input type="number" value={config.groupSize || 208} onChange={e => setConfig({...config, groupSize: parseInt(e.target.value)||208})} className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition"/>
-                            </div>
-                        </div>
-
-                        <button onClick={()=>{ localStorage.setItem('kaoyan_config', JSON.stringify(config)); setView('home'); }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-200 transition transform active:scale-[0.98]">保存并返回</button>
+                        <button onClick={()=>{ localStorage.setItem('kaoyan_config', JSON.stringify(config)); setView('home'); }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-xl font-bold shadow-lg transition active:scale-95">保存配置</button>
                     </div>
                 </div>
             );
         };
+        
+       // --- 自动同步 Hook (核心黑科技) ---
+        const useAutoSync = (words, setWords, config) => {
+            const [syncStatus, setSyncStatus] = useState('idle'); // idle, pending, syncing, success, error
+            const [lastSyncTime, setLastSyncTime] = useState(0);
+            const timerRef = useRef(null);
+
+            // 1. 启动拉取
+            useEffect(() => {
+                if (config.autoSync && config.jsonbinKey && config.jsonbinId) {
+                    pullFromCloud(true);
+                }
+            }, []);
+
+            // 2. 自动上传 (防抖3秒)
+            useEffect(() => {
+                if (!config.autoSync || !config.jsonbinKey || !config.jsonbinId || words.length === 0) return;
+                
+                // 如果刚拉取完 5秒内不要反向上传
+                if (Date.now() - lastSyncTime < 5000) return;
+
+                setSyncStatus('pending');
+                if (timerRef.current) clearTimeout(timerRef.current);
+                
+                timerRef.current = setTimeout(() => {
+                    pushToCloud();
+                }, 3000);
+
+                return () => clearTimeout(timerRef.current);
+            }, [words, config]);
+
+            const pushToCloud = async () => {
+                setSyncStatus('syncing');
+                try {
+                    const storage = {};
+                    for(let i=0; i<localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key);
+                    }
+                    const rawData = JSON.stringify({ type: 'AUTO_SYNC', timestamp: Date.now(), storage });
+                    // 核心：压缩数据！
+                    const compressed = LZString.compressToUTF16(rawData);
+
+                    const res = await fetch(`https://api.jsonbin.io/v3/b/${config.jsonbinId.trim()}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Master-Key': config.jsonbinKey.trim(),
+                            'X-Bin-Versioning': 'false' // 核心：关闭版本控制，防止403
+                        },
+                        body: JSON.stringify({ kaoyan_compressed: true, content: compressed })
+                    });
+
+                    if (!res.ok) throw new Error("Upload failed");
+                    setSyncStatus('success');
+                    setLastSyncTime(Date.now());
+                    setTimeout(() => setSyncStatus('idle'), 2000);
+                } catch (e) {
+                    console.error("AutoSync Error:", e);
+                    setSyncStatus('error');
+                }
+            };
+
+            const pullFromCloud = async (isInit = false) => {
+                setSyncStatus('syncing');
+                try {
+                    const res = await fetch(`https://api.jsonbin.io/v3/b/${config.jsonbinId.trim()}/latest`, {
+                        method: 'GET',
+                        headers: { 'X-Master-Key': config.jsonbinKey.trim() }
+                    });
+                    if (!res.ok) throw new Error("Download failed");
+                    const json = await res.json();
+                    let data = json.record;
+
+                    if (data.kaoyan_compressed) {
+                        const decompressed = LZString.decompressFromUTF16(data.content);
+                        if (decompressed) data = JSON.parse(decompressed);
+                    }
+
+                    if (data && data.storage) {
+                        const localTime = parseInt(localStorage.getItem('kaoyan_sync_time') || '0');
+                        // 如果云端数据还没本地新，就不覆盖
+                        if (isInit && data.timestamp <= localTime) {
+                            setSyncStatus('idle');
+                            return;
+                        }
+
+                        Object.keys(data.storage).forEach(k => {
+                            if(k.startsWith('kaoyan_')) localStorage.setItem(k, data.storage[k]);
+                        });
+                        localStorage.setItem('kaoyan_sync_time', data.timestamp);
+                        
+                        if(data.storage.kaoyan_vocab_list) setWords(JSON.parse(data.storage.kaoyan_vocab_list));
+                        
+                        setSyncStatus('success');
+                        setLastSyncTime(Date.now());
+                        if(isInit) alert("☁️ 云端进度已同步！");
+                        setTimeout(() => setSyncStatus('idle'), 2000);
+                    }
+                } catch (e) {
+                    console.error("AutoSync Pull Error:", e);
+                    setSyncStatus('error');
+                }
+            };
+
+            return { syncStatus };
+        };
+
+        // 主组件
         const App = () => {
             const [view, setView] = useState('home');
             const [words, setWords] = useState([]);
             const [sessionConfig, setSessionConfig] = useState({}); 
-            const [config, setConfig] = useState({ type: 'openai', baseUrl: 'https://api.deepseek.com', apiKey: '', model: 'deepseek-chat', groupSize: 208 });
-            const [chatSession, setChatSession] = useState(null); // null or word string
+            const [config, setConfig] = useState({ type: 'openai', baseUrl: 'https://api.deepseek.com', apiKey: '', model: 'deepseek-chat', groupSize: 208, autoSync: false });
+            const [chatSession, setChatSession] = useState(null);
 
             useEffect(() => {
                 try {
@@ -1292,26 +1344,25 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                     const savedCfg = localStorage.getItem('kaoyan_config');
                     if (saved) setWords(JSON.parse(saved));
                     if (savedCfg) setConfig(JSON.parse(savedCfg));
-                } catch(e) { console.error("Data load fail", e); }
-                // Remove spinner once React mounts
+                } catch(e) {}
                 const loader = document.getElementById('root').querySelector('div');
-                if(loader && loader.style.border) loader.remove(); 
+                if(loader && loader.style.border) loader.remove();
             }, []);
+
+            // 启动自动同步
+            const { syncStatus } = useAutoSync(words, setWords, config);
 
             const handleBack = () => {
                 if (view === 'study') {
                     if (sessionConfig.type === 'group_study') setView('group_list');
                     else setView('home');
-                } else if (view === 'group_list') {
-                    setView('home');
-                } else {
-                    setView('home');
-                }
+                } else if (view === 'group_list') setView('home');
+                else setView('home');
             };
 
             return (
                 <div className="h-full flex flex-col bg-gray-50">
-                    <Navbar view={view} setView={setView} goBack={handleBack} />
+                    <Navbar view={view} setView={setView} syncStatus={syncStatus} />
                     <main className="flex-1 overflow-hidden flex flex-col relative">
                         {view === 'home' && <Dashboard words={words} setView={setView} setSessionConfig={setSessionConfig} />}
                         {view === 'group_list' && <GroupList words={words} setWords={setWords} category={sessionConfig.category} setView={setView} setSessionConfig={setSessionConfig} config={config} />}
@@ -1320,14 +1371,9 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                         {view === 'import' && <ImportExport setWords={setWords} words={words} setView={setView} config={config} />}
                         {view === 'settings' && <SettingsPanel config={config} setConfig={setConfig} setView={setView} />}
                         
-                        {/* Chat Overlay */}
                         {chatSession && (
                             <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4 animate-fade-in">
-                                <WordChat 
-                                    word={chatSession} 
-                                    onClose={() => setChatSession(null)} 
-                                    config={config} 
-                                />
+                                <WordChat word={chatSession} onClose={() => setChatSession(null)} config={config} />
                             </div>
                         )}
                     </main>
