@@ -39,6 +39,12 @@
         .markdown-body ul { list-style-type: disc; padding-left: 1.2em; margin-bottom: 0.5em; }
         .markdown-body ol { list-style-type: decimal; padding-left: 1.2em; margin-bottom: 0.5em; }
         .markdown-body code { background-color: rgba(0,0,0,0.05); padding: 0.1em 0.3em; border-radius: 3px; font-family: monospace; }
+        
+        /* 动画定义 */
+        @keyframes slide-up { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .animate-slide-up { animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+        .animate-fade-in { animation: fade-in 0.2s ease-out; }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-900 h-screen overflow-hidden flex flex-col">
@@ -66,40 +72,46 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
-        // --- Icons ---
-     const Icons = {
-            Book: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
-            CloudCheck: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 15l2 2 4-4"/><path d="M19 17a5 5 0 0 0 0-10c-5.523 0-10 4.477-10 10"/></svg>,
-            CloudUpload: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/><path d="M19 17a5 5 0 0 0 0-10c-5.523 0-10 4.477-10 10"/></svg>,
-            CloudOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 7h1.8a5 5 0 0 0 .68 9.08"/><line x1="2" y1="2" x2="22" y2="22"/></svg>,
-            Brain: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>,
-            List: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>,
-            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>,
-            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.39a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
-            Upload: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
-            Sort: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>,
-            Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
-            Trash2: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>,
-            ArrowLeft: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>,
-            Maximize: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>,
-            Minimize: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>,
-            CloudDownload: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></svg>,
-            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
-            Folder: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>,
-            FolderInput: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 2H4a2 2 0 0 0-2 2Z"/><path d="m10 13 2 2 4-4"/></svg>,
-            Move: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3"/></svg>,
-            Edit: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
-            MessageCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>,
-            Send: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
-            Zap: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
-            BookOpen: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
-            Palette: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>,
-            Refresh: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg>
+        // --- Icons (修复版：使用 flex 居中，去除 inline-block 导致的对齐问题) ---
+        const Icons = {
+            Book: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
+            CloudCheck: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 15l2 2 4-4"/><path d="M19 17a5 5 0 0 0 0-10c-5.523 0-10 4.477-10 10"/></svg>,
+            CloudUpload: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/><path d="M19 17a5 5 0 0 0 0-10c-5.523 0-10 4.477-10 10"/></svg>,
+            CloudOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 7h1.8a5 5 0 0 0 .68 9.08"/><line x1="2" y1="2" x2="22" y2="22"/></svg>,
+            Brain: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>,
+            List: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>,
+            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>,
+            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.39a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
+            Upload: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+            Sort: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>,
+            Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+            Trash2: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>,
+            ArrowLeft: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>,
+            Maximize: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>,
+            Minimize: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>,
+            CloudDownload: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></svg>,
+            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
+            Folder: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>,
+            FolderInput: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 2H4a2 2 0 0 0-2 2Z"/><path d="m10 13 2 2 4-4"/></svg>,
+            Move: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3"/></svg>,
+            Edit: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+            MessageCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>,
+            Send: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
+            Zap: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+            BookOpen: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
+            Palette: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>,
+            Refresh: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg>,
+            Search: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+            Volume2: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>,
+            Eye: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
+            EyeOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>,
+            Sparkles: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
         };
 
         const Icon = ({ name, size = 20, className = "" }) => {
             const Svg = Icons[name] || Icons.Book;
-            return <span className={`inline-block ${className}`} style={{ width: size, height: size }}><Svg /></span>;
+            // 修复：使用 flex 布局确保 SVG 在容器内绝对居中，去除 inline-block 带来的垂直对齐问题
+            return <span className={`flex justify-center items-center ${className}`} style={{ width: size, height: size }}><Svg /></span>;
         };
 
         const API_PRESETS = {
@@ -115,20 +127,17 @@
         };
 
        const playAudio = (text) => {
-            // 如果文本包含空格且长度大于30，或者包含标点，视为句子，使用浏览器原生语音
             if (text.includes(' ') || text.length > 20) {
                 if ('speechSynthesis' in window) {
                     window.speechSynthesis.cancel();
                     const u = new SpeechSynthesisUtterance(text);
-                    u.lang = 'en-US'; // 美式发音
-                    u.rate = 0.9; // 语速稍慢一点点，适合练习
+                    u.lang = 'en-US';
+                    u.rate = 0.9;
                     window.speechSynthesis.speak(u);
                 }
             } else {
-                // 单个单词继续用有道接口，发音更自然
                 const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(text)}&type=2`);
                 audio.play().catch(e => {
-                    // 降级处理
                     if ('speechSynthesis' in window) {
                         const u = new SpeechSynthesisUtterance(text);
                         u.lang = 'en-US';
@@ -154,12 +163,11 @@
         };
 
         // --- Word Chat Component (AI 老师) ---
-    // --- Word Chat Component (AI 老师) ---
         const WordChat = ({ word, onClose, config }) => {
             const [messages, setMessages] = useState([]);
             const [input, setInput] = useState("");
             const [isLoading, setIsLoading] = useState(false);
-            const [thinkMode, setThinkMode] = useState("fast"); // fast, deep, or oral
+            const [thinkMode, setThinkMode] = useState("fast");
             const [bubbleColor, setBubbleColor] = useState("bg-indigo-600");
             const [showColorPicker, setShowColorPicker] = useState(false);
             const messagesEndRef = useRef(null);
@@ -173,20 +181,15 @@
                 { name: "Black", class: "bg-gray-800" }
             ];
 
-            const scrollToBottom = () => {
-                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-            };
-
+            const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
             useEffect(() => { scrollToBottom(); }, [messages]);
 
-            // 初始问候
             useEffect(() => {
                 const initialMsg = {
                     role: "assistant",
                     content: `Hi! 我是你的专属 AI 私教。\n我们今天要死磕的单词是： **${word}**。\n\n你可以切换上方模式：\n⚡ **快速**：简单通俗讲解\n📖 **深度**：考研真题考法\n👄 **口语**：纯英对话练听力`
                 };
                 setMessages([initialMsg]);
-                // 默认触发快速讲解
                 handleSend(null, `请用通俗易懂、生活化的场景（像讲故事一样）讲解单词 "${word}"。拆分为：1.作为名词/动词的核心含义；2.给出一个容易记住的场景例子；3.总结记忆点。使用 Markdown 格式，重点加粗。`);
             }, []);
 
@@ -201,54 +204,33 @@
                 }
                 setIsLoading(true);
 
-                // 精心设计的提示词
                 let systemPrompt = "";
-                if (thinkMode === 'oral') {
-                    systemPrompt = "You are a friendly American English tutor. Speak ONLY in English. Keep your sentences simple, clear, and encouraging. Correct the user's grammar gently if needed. Engage in a conversation using the target word.";
-                } else if (thinkMode === 'deep') {
-                    systemPrompt = "你是一位严肃的考研英语命题组专家。请从词源词根、熟词僻义、历年真题考法、易混词辨析这四个维度进行深度解析。必须使用 Markdown 格式，关键点加粗。";
-                } else {
-                    // 这是你最喜欢的模式
-                    systemPrompt = "你是一位非常擅长类比的英语私教。请用最通俗、生活化、甚至有点幽默的语言解释单词。核心策略：1.把抽象概念具象化（比如把 representative 比作“替身”）。2.多用生活场景串联不同词性。3.最后给一句“简单记”口诀。使用 Markdown 格式。";
-                }
+                if (thinkMode === 'oral') systemPrompt = "You are a friendly American English tutor. Speak ONLY in English. Keep your sentences simple, clear, and encouraging. Correct the user's grammar gently if needed. Engage in a conversation using the target word.";
+                else if (thinkMode === 'deep') systemPrompt = "你是一位严肃的考研英语命题组专家。请从词源词根、熟词僻义、历年真题考法、易混词辨析这四个维度进行深度解析。必须使用 Markdown 格式，关键点加粗。";
+                else systemPrompt = "你是一位非常擅长类比的英语私教。请用最通俗、生活化、甚至有点幽默的语言解释单词。核心策略：1.把抽象概念具象化。2.多用生活场景串联不同词性。3.最后给一句“简单记”口诀。使用 Markdown 格式。";
 
                 try {
-                    const apiMessages = [
-                        { role: "system", content: systemPrompt },
-                        ...messages.filter(m => m.role !== 'error' && m.content !== '...'),
-                        { role: "user", content }
-                    ];
-
+                    const apiMessages = [{ role: "system", content: systemPrompt }, ...messages.filter(m => m.role !== 'error' && m.content !== '...'), { role: "user", content }];
                     setMessages(prev => [...prev, { role: "assistant", content: "..." }]);
-
+                    
                     let baseUrl = config.baseUrl.replace(/\/$/, "");
-                    if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel")) baseUrl += "/v1";
+                    if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel") && !baseUrl.includes("lingyiwanwu")) baseUrl += "/v1";
 
                     const response = await fetch(`${baseUrl}/chat/completions`, {
                         method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Authorization": `Bearer ${config.apiKey}`
-                        },
-                        body: JSON.stringify({
-                            model: config.model,
-                            messages: apiMessages,
-                            stream: true
-                        })
+                        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${config.apiKey}` },
+                        body: JSON.stringify({ model: config.model, messages: apiMessages, stream: true })
                     });
-
                     if (!response.ok) throw new Error("API 请求失败");
-
+                    
                     const reader = response.body.getReader();
                     const decoder = new TextDecoder("utf-8");
                     let fullText = "";
-
                     while (true) {
                         const { done, value } = await reader.read();
                         if (done) break;
                         const chunk = decoder.decode(value, { stream: true });
                         const lines = chunk.split("\n");
-                        
                         for (const line of lines) {
                             if (line.startsWith("data: ")) {
                                 const data = line.slice(6);
@@ -257,30 +239,19 @@
                                     const json = JSON.parse(data);
                                     const delta = json.choices[0]?.delta?.content || "";
                                     fullText += delta;
-                                    
-                                    setMessages(prev => {
-                                        const newMsgs = [...prev];
-                                        newMsgs[newMsgs.length - 1] = { role: "assistant", content: fullText };
-                                        return newMsgs;
-                                    });
+                                    setMessages(prev => { const newMsgs = [...prev]; newMsgs[newMsgs.length - 1] = { role: "assistant", content: fullText }; return newMsgs; });
                                 } catch (e) { }
                             }
                         }
                     }
-                } catch (error) {
-                    setMessages(prev => [...prev, { role: "error", content: "出错了: " + error.message }]);
-                } finally {
-                    setIsLoading(false);
-                }
+                } catch (error) { setMessages(prev => [...prev, { role: "error", content: "出错了: " + error.message }]); } finally { setIsLoading(false); }
             };
 
             return (
                 <div className="fixed inset-0 z-[60] flex flex-col bg-white md:max-w-md md:mx-auto md:my-4 md:rounded-2xl md:shadow-2xl md:border md:border-gray-200 overflow-hidden animate-slide-up">
-                    {/* Header */}
                     <div className="flex justify-between items-center p-4 border-b bg-white z-10 shadow-sm">
                         <div className="flex flex-col">
                             <h3 className="font-bold text-lg text-gray-800 flex items-center">{word} <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded">AI 私教</span></h3>
-                            {/* 模式切换按钮 */}
                             <div className="flex gap-2 mt-2">
                                 <button onClick={() => setThinkMode('fast')} className={`px-2 py-1 text-xs rounded-lg transition border ${thinkMode==='fast' ? 'bg-indigo-50 text-indigo-600 border-indigo-200 font-bold' : 'text-gray-500 border-transparent'}`}>⚡ 快速理解</button>
                                 <button onClick={() => setThinkMode('deep')} className={`px-2 py-1 text-xs rounded-lg transition border ${thinkMode==='deep' ? 'bg-indigo-50 text-indigo-600 border-indigo-200 font-bold' : 'text-gray-500 border-transparent'}`}>📖 深度考研</button>
@@ -297,28 +268,14 @@
                             <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-400"><Icon name="X" size={24}/></button>
                         </div>
                     </div>
-
-                    {/* Chat Area */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-5 bg-gray-50 custom-scroll" onClick={()=>setShowColorPicker(false)}>
                         {messages.map((msg, idx) => (
                             <div key={idx} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`flex flex-col max-w-[90%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                    <div className={`p-3.5 rounded-2xl text-sm md:text-base leading-relaxed shadow-sm relative group ${
-                                        msg.role === 'user' 
-                                        ? 'bg-white text-gray-800 border border-gray-100 rounded-tr-none' 
-                                        : `${bubbleColor} text-white rounded-tl-none markdown-body`
-                                    } ${msg.role === 'error' ? 'bg-red-50 text-red-600 border-red-200' : ''}`}>
+                                    <div className={`p-3.5 rounded-2xl text-sm md:text-base leading-relaxed shadow-sm relative group ${msg.role === 'user' ? 'bg-white text-gray-800 border border-gray-100 rounded-tr-none' : `${bubbleColor} text-white rounded-tl-none markdown-body`} ${msg.role === 'error' ? 'bg-red-50 text-red-600 border-red-200' : ''}`}>
                                         {msg.role === 'assistant' ? <div dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }} /> : msg.content}
-                                        
-                                        {/* 播放按钮：只在 AI 消息且不是加载中显示 */}
                                         {msg.role === 'assistant' && msg.content !== '...' && (
-                                            <button 
-                                                onClick={(e) => {e.stopPropagation(); playAudio(msg.content.replace(/[\*\#]/g, ''));}} 
-                                                className="absolute -right-8 bottom-0 p-1.5 text-gray-400 hover:text-indigo-600 bg-white/50 rounded-full hover:bg-white transition shadow-sm"
-                                                title="播放语音"
-                                            >
-                                                <Icon name="Volume2" size={16}/>
-                                            </button>
+                                            <button onClick={(e) => {e.stopPropagation(); playAudio(msg.content.replace(/[\*\#]/g, ''));}} className="absolute -right-8 bottom-0 p-1.5 text-gray-400 hover:text-indigo-600 bg-white/50 rounded-full hover:bg-white transition shadow-sm"><Icon name="Volume2" size={16}/></button>
                                         )}
                                     </div>
                                 </div>
@@ -326,20 +283,9 @@
                         ))}
                         <div ref={messagesEndRef} />
                     </div>
-
-                    {/* Input Area */}
                     <div className="p-3 bg-white border-t flex items-end gap-2 safe-bottom">
-                        <textarea 
-                            value={input}
-                            onChange={e => setInput(e.target.value)}
-                            onKeyDown={e => {if(e.key==='Enter' && !e.shiftKey){e.preventDefault(); handleSend();}}}
-                            placeholder={thinkMode === 'oral' ? "Reply in English..." : "继续追问，比如：给个例句..."}
-                            className="flex-1 max-h-32 p-3 bg-gray-50 border-0 rounded-xl focus:ring-2 focus:ring-indigo-100 outline-none resize-none text-sm"
-                            rows="1"
-                        ></textarea>
-                        <button onClick={(e)=>handleSend(e)} disabled={isLoading || !input.trim()} className={`p-3 rounded-xl text-white shadow-md transition-all ${isLoading || !input.trim() ? 'bg-gray-300' : bubbleColor} active:scale-95`}>
-                            {isLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Icon name="Send" size={20} />}
-                        </button>
+                        <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => {if(e.key==='Enter' && !e.shiftKey){e.preventDefault(); handleSend();}}} placeholder="继续追问..." className="flex-1 max-h-32 p-3 bg-gray-50 border-0 rounded-xl focus:ring-2 focus:ring-indigo-100 outline-none resize-none text-sm" rows="1"></textarea>
+                        <button onClick={(e)=>handleSend(e)} disabled={isLoading || !input.trim()} className={`p-3 rounded-xl text-white shadow-md transition-all ${isLoading || !input.trim() ? 'bg-gray-300' : bubbleColor} active:scale-95`}>{isLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Icon name="Send" size={20} />}</button>
                     </div>
                 </div>
             );
@@ -383,7 +329,7 @@
             );
         };
 
-      const WordListMode = ({ words, setWords, setChatSession }) => {
+        const WordListMode = ({ words, setWords, setChatSession }) => {
             const [search, setSearch] = useState("");
             const [sortMode, setSortMode] = useState('default');
             const [sortDesc, setSortDesc] = useState(false);
@@ -418,14 +364,12 @@
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                             {displayWords.map((word) => (
                                 <div key={word.id} className="bg-white rounded-xl shadow-sm p-5 hover:shadow-md transition duration-200 border border-gray-100 hover:border-indigo-100 flex flex-col h-full relative group">
-                                    {/* 修复点：这里把 items-baseline 改为了 items-center */}
                                     <div className="flex justify-between items-center mb-3">
                                         <div className="flex items-baseline space-x-2 overflow-hidden">
                                             <h3 className="text-lg font-bold text-gray-900 truncate">{word.word}</h3>
                                             <span className="text-sm font-mono text-gray-500 truncate">{word.phonetic}</span>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            {/* AI 按钮 */}
                                             <button onClick={(e)=>{e.stopPropagation(); setChatSession(word.word);}} className="p-1.5 bg-indigo-50 text-indigo-500 hover:text-white hover:bg-indigo-500 rounded-full transition shadow-sm" title="AI 详解"><Icon name="MessageCircle" size={18}/></button>
                                             <div className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full whitespace-nowrap font-medium">复习 {word.stats?.reviewCount || 0}</div>
                                         </div>
@@ -463,6 +407,7 @@
             const customCats = Object.keys(stats).filter(k => !standardCats.includes(k) && k !== 'review' && k !== 'uncategorized');
             const openCategory = (category) => { setSessionConfig({ type: 'group_select', category }); setView('group_list'); };
             const startReview = () => { setSessionConfig({ type: 'review' }); setView('study'); };
+            
             const Card = ({ title, count, color, onClick, isCustom }) => (
                 <div onClick={onClick} className={`bg-white p-5 rounded-xl shadow-sm border border-gray-100 cursor-pointer transform transition hover:scale-[1.02] hover:shadow-md active:scale-95 relative overflow-hidden group h-32 flex flex-col justify-between`}>
                     <div className={`absolute top-0 left-0 w-1.5 h-full ${color} transition-all group-hover:w-2`}></div>
@@ -476,9 +421,11 @@
                     </div>
                 </div>
             );
+
             return (
                 <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 bg-gray-50">
                     <div className="max-w-5xl mx-auto space-y-8 pb-10">
+                        {/* 智能复习卡片 - 脑图图标已修复居中问题 */}
                         <div onClick={startReview} className="w-full bg-gradient-to-br from-indigo-600 to-violet-600 p-8 rounded-2xl text-white shadow-xl shadow-indigo-200 cursor-pointer transform transition hover:-translate-y-1 hover:shadow-2xl active:scale-[0.99] relative overflow-hidden flex flex-col md:flex-row justify-between items-center group">
                             <div className="z-10 relative text-center md:text-left">
                                 <h2 className="text-3xl font-bold mb-2 tracking-tight">智能复习计划</h2>
@@ -790,22 +737,17 @@
 
             return (
                 <div className="flex-1 flex flex-col relative bg-gray-100 overflow-hidden">
-                    {/* 顶部进度条 */}
                     <div className="absolute top-0 left-0 w-full h-1.5 bg-gray-200 z-10">
                         <div className="h-full bg-indigo-600 transition-all duration-300 ease-out" style={{width: `${(currentIdx / queue.length) * 100}%`}}></div>
                     </div>
                     
-                    {/* 退出按钮 - 悬浮在左上角 */}
                     <button onClick={onExit} className="absolute top-4 left-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title="退出"><Icon name="ArrowLeft" size={24}/></button>
                     
-                    {/* AI Chat Button in Study Mode */}
                     <button onClick={(e)=>{e.stopPropagation(); setChatSession(currentCard.word);}} className="absolute top-4 right-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-indigo-500 hover:text-white hover:bg-indigo-500 transition" title="AI 详解"><Icon name="MessageCircle" size={24}/></button>
 
-                    {/* 卡片容器 */}
                     <div className="flex-1 flex items-center justify-center p-4 md:p-8 overflow-hidden">
                         <div className="relative scene w-full max-w-sm md:max-w-3xl aspect-[3/4] md:aspect-[4/3] max-h-[85vh]">
                             <div className={`card-object ${isFlipped ? 'is-flipped' : ''}`} onClick={() => setIsFlipped(!isFlipped)}>
-                                {/* 正面 */}
                                 <div className="card-face flex flex-col items-center justify-center p-8 md:p-12 text-center bg-gradient-to-br from-white to-gray-50 border border-white">
                                     <div className="flex-1 flex flex-col items-center justify-center w-full">
                                         <h1 className="text-5xl md:text-7xl lg:text-8xl font-black text-gray-800 mb-6 md:mb-10 tracking-tight">{currentCard.word}</h1>
@@ -820,15 +762,12 @@
                                     <div className="mt-auto text-gray-400 text-sm md:text-base animate-pulse font-medium">点击翻转查看释义</div>
                                 </div>
 
-                                {/* 背面 */}
                                 <div className="card-face card-face-back p-0 bg-white">
-                                    {/* 顶部单词栏 */}
                                     <div className="flex-shrink-0 bg-white/95 backdrop-blur border-b border-gray-100 p-4 md:p-6 flex justify-between items-center z-10 shadow-sm">
                                         <h2 className="text-2xl md:text-4xl font-bold text-indigo-900">{currentCard.word}</h2>
                                         <button onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}} className="p-3 bg-indigo-50 rounded-full text-indigo-600 hover:bg-indigo-100 transition"><Icon name="Volume2" size={24}/></button>
                                     </div>
                                     
-                                    {/* 中间释义滚动区 */}
                                     <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 space-y-4 md:space-y-6">
                                         {currentCard.meanings.map((m, idx) => {
                                             const isHidden = m.isMastered && !m._forceShow;
@@ -863,7 +802,6 @@
                                         <div className="h-20"></div> 
                                     </div>
 
-                                    {/* 底部按钮栏 */}
                                     <div className="flex-shrink-0 absolute bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 md:p-6 flex space-x-3 md:space-x-6 shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.1)] z-20">
                                         <button onClick={(e)=>{e.stopPropagation();handleRating(1);}} className="flex-1 btn-press bg-red-50 hover:bg-red-100 text-red-600 py-4 md:py-5 rounded-xl font-bold text-base md:text-lg flex flex-col items-center transition-colors border border-red-100"><span>不认识</span></button>
                                         <button onClick={(e)=>{e.stopPropagation();handleRating(2);}} className="flex-1 btn-press bg-yellow-50 hover:bg-yellow-100 text-yellow-600 py-4 md:py-5 rounded-xl font-bold text-base md:text-lg flex flex-col items-center transition-colors border border-yellow-100"><span>不熟</span></button>
@@ -877,8 +815,8 @@
             );
         };
 
-const ImportExport = ({ setWords, words, setView, config }) => {
-            const [activeTab, setActiveTab] = useState('data'); // 默认打开数据管理
+        const ImportExport = ({ setWords, words, setView, config }) => {
+            const [activeTab, setActiveTab] = useState('data');
             const [textInput, setTextInput] = useState('');
             const [importMode, setImportMode] = useState('frequency');
             const [importCategory, setImportCategory] = useState('high');
@@ -1000,7 +938,7 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                 const a = document.createElement('a'); a.href = url; a.download = fileName; a.click(); 
             };
 
-            // --- Gitee 同步逻辑 ---
+            // --- Gitee 同步逻辑 (已修复：自动检测是否存在，智能切换 POST/PUT) ---
             const toBase64 = (str) => window.btoa(unescape(encodeURIComponent(str)));
             const fromBase64 = (str) => decodeURIComponent(escape(window.atob(str)));
             const FILE_PATH = "backup.json";
@@ -1010,12 +948,24 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                 if (!confirm("⚠️ 确定上传并覆盖云端数据吗？")) return;
                 setIsSyncing(true);
                 try {
-                    // 1. 获取 SHA
-                    const getRes = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}?access_token=${config.giteeToken}`);
+                    // 1. 尝试获取文件信息 (检查是否存在)
+                    const checkUrl = `https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}?access_token=${config.giteeToken}`;
+                    const checkRes = await fetch(checkUrl);
+                    
                     let sha = "";
-                    if (getRes.ok) { sha = (await getRes.json()).sha; }
+                    let method = "POST"; // 默认新建
 
-                    // 2. 打包
+                    if (checkRes.ok) {
+                        const fileData = await checkRes.json();
+                        sha = fileData.sha;
+                        method = "PUT"; // 存在则更新
+                    } else if (checkRes.status === 404) {
+                        method = "POST"; // 不存在则新建
+                    } else {
+                        throw new Error(`检查仓库失败: ${checkRes.status}`);
+                    }
+
+                    // 2. 打包数据
                     const storage = {};
                     for(let i=0; i<localStorage.length; i++) {
                         const key = localStorage.key(i);
@@ -1025,15 +975,29 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                     const compressed = LZString.compressToUTF16(rawData);
                     const contentBase64 = toBase64(JSON.stringify({ compressed: true, data: compressed }));
 
-                    // 3. 上传
+                    // 3. 构建请求体
+                    const body = {
+                        access_token: config.giteeToken,
+                        content: contentBase64,
+                        message: "Manual sync from App"
+                    };
+                    if (sha) body.sha = sha; // 只有更新时才带 sha
+
+                    // 4. 发送请求
                     const res = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}`, {
-                        method: sha ? 'PUT' : 'POST',
+                        method: method,
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ access_token: config.giteeToken, content: contentBase64, message: "Manual sync", sha })
+                        body: JSON.stringify(body)
                     });
-                    if(!res.ok) throw new Error("上传失败 (请检查 Token 权限或仓库名)");
+
+                    if(!res.ok) {
+                        const errData = await res.json();
+                        throw new Error(`上传失败: ${errData.message || res.status}`);
+                    }
                     alert("✅ Gitee 同步成功！");
-                } catch(e) { alert(e.message); } finally { setIsSyncing(false); }
+                } catch(e) { 
+                    alert("同步错误: " + e.message + "\n\n(提示: 请检查 Token 权限和仓库名称是否正确)"); 
+                } finally { setIsSyncing(false); }
             };
 
             const syncFromGitee = async () => {
@@ -1120,11 +1084,9 @@ const ImportExport = ({ setWords, words, setView, config }) => {
             );
         };
 
-  const SettingsPanel = ({ config, setConfig, setView }) => {
+        const SettingsPanel = ({ config, setConfig, setView }) => {
             const [selectedPreset, setSelectedPreset] = useState('deepseek');
-            const [isFetchingModels, setIsFetchingModels] = useState(false);
-
-            // AI设置相关逻辑保留...
+            
             useEffect(() => {
                 const matchedKey = Object.keys(API_PRESETS).find(key => {
                     const preset = API_PRESETS[key];
@@ -1146,7 +1108,6 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                     <div className="w-full max-w-xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 h-fit space-y-6">
                         <h2 className="text-xl font-bold border-b border-gray-100 pb-4 text-gray-800">设置</h2>
                         
-                        {/* 自动同步开关 */}
                         <div className="bg-red-50 p-4 rounded-xl border border-red-100 flex items-center justify-between">
                             <div>
                                 <h3 className="font-bold text-red-900 flex items-center"><span className="mr-1">🇨🇳</span> Gitee 极速同步</h3>
@@ -1158,7 +1119,6 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                             </label>
                         </div>
 
-                        {/* Gitee 设置 */}
                         <div className="space-y-4">
                             <h3 className="text-sm font-bold text-gray-500 uppercase">Gitee 配置</h3>
                             <div>
@@ -1196,23 +1156,19 @@ const ImportExport = ({ setWords, words, setView, config }) => {
             );
         };
         
-       // --- 自动同步 Hook (核心黑科技) ---
-      // --- Gitee Auto Sync Hook (国内极速版) ---
+        // --- 自动同步 Hook (核心 Gitee 逻辑同样已修复) ---
         const useAutoSync = (words, setWords, config) => {
             const [syncStatus, setSyncStatus] = useState('idle');
             const [lastSyncTime, setLastSyncTime] = useState(0);
             const timerRef = useRef(null);
+            const FILE_PATH = "backup.json";
 
-            const FILE_PATH = "backup.json"; // 固定文件名
-
-            // 1. 启动拉取
             useEffect(() => {
                 if (config.autoSync && config.giteeToken && config.giteeOwner && config.giteeRepo) {
                     pullFromGitee(true);
                 }
             }, []);
 
-            // 2. 自动上传
             useEffect(() => {
                 if (!config.autoSync || !config.giteeToken || !config.giteeOwner || !config.giteeRepo || words.length === 0) return;
                 if (Date.now() - lastSyncTime < 5000) return;
@@ -1220,30 +1176,31 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                 setSyncStatus('pending');
                 if (timerRef.current) clearTimeout(timerRef.current);
                 
-                timerRef.current = setTimeout(() => {
-                    pushToGitee();
-                }, 3000);
-
+                timerRef.current = setTimeout(() => { pushToGitee(); }, 3000);
                 return () => clearTimeout(timerRef.current);
             }, [words, config]);
 
-            // 辅助：Unicode 转 Base64 (解决中文乱码)
-            const toBase64 = (str) => {
-                return window.btoa(unescape(encodeURIComponent(str)));
-            };
-            const fromBase64 = (str) => {
-                return decodeURIComponent(escape(window.atob(str)));
-            };
+            const toBase64 = (str) => window.btoa(unescape(encodeURIComponent(str)));
+            const fromBase64 = (str) => decodeURIComponent(escape(window.atob(str)));
 
             const pushToGitee = async () => {
                 setSyncStatus('syncing');
                 try {
-                    // 1. 先获取文件的 SHA (Gitee 更新文件必须带 SHA)
-                    const getRes = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}?access_token=${config.giteeToken}`);
+                    // 1. 获取 SHA
+                    const checkUrl = `https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}?access_token=${config.giteeToken}`;
+                    const checkRes = await fetch(checkUrl);
+                    
                     let sha = "";
-                    if (getRes.ok) {
-                        const getData = await getRes.json();
-                        sha = getData.sha;
+                    let method = "POST"; 
+
+                    if (checkRes.ok) {
+                        const fileData = await checkRes.json();
+                        sha = fileData.sha;
+                        method = "PUT"; 
+                    } else if (checkRes.status === 404) {
+                        method = "POST";
+                    } else {
+                        throw new Error("Check failed");
                     }
 
                     // 2. 准备数据
@@ -1253,22 +1210,16 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                         if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key);
                     }
                     const rawData = JSON.stringify({ type: 'GITEE_SYNC', timestamp: Date.now(), storage });
-                    
-                    // 3. 压缩并编码
                     const compressed = LZString.compressToUTF16(rawData);
                     const contentBase64 = toBase64(JSON.stringify({ compressed: true, data: compressed }));
 
-                    // 4. 上传
                     const body = {
                         access_token: config.giteeToken,
                         content: contentBase64,
-                        message: "Auto sync from App",
-                        sha: sha // 如果是新建文件，SHA 为空即可(但Gitee API新建和更新略有不同，这里简化处理，若404则走新建逻辑)
+                        message: "Auto sync from App"
                     };
-                    
-                    // 如果文件不存在(404)，Gitee要求POST新建；如果存在，PUT更新
-                    const method = sha ? 'PUT' : 'POST';
-                    
+                    if (sha) body.sha = sha;
+
                     const res = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}`, {
                         method: method,
                         headers: { 'Content-Type': 'application/json' },
@@ -1288,35 +1239,21 @@ const ImportExport = ({ setWords, words, setView, config }) => {
             const pullFromGitee = async (isInit = false) => {
                 setSyncStatus('syncing');
                 try {
-                    // 1. 获取文件内容
                     const res = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}?access_token=${config.giteeToken}`);
                     if (!res.ok) throw new Error("Gitee Download Failed");
                     
                     const json = await res.json();
-                    // Gitee 返回的 content 是 Base64 编码的
                     const fileContent = fromBase64(json.content);
                     const fileObj = JSON.parse(fileContent);
 
-                    let data = null;
-                    if (fileObj.compressed) {
-                        const decompressed = LZString.decompressFromUTF16(fileObj.data);
-                        data = JSON.parse(decompressed);
-                    } else {
-                        data = fileObj;
-                    }
+                    let data = fileObj.compressed ? JSON.parse(LZString.decompressFromUTF16(fileObj.data)) : fileObj;
 
                     if (data && data.storage) {
                         const localTime = parseInt(localStorage.getItem('kaoyan_sync_time') || '0');
-                        if (isInit && data.timestamp <= localTime) {
-                            setSyncStatus('idle');
-                            return;
-                        }
+                        if (isInit && data.timestamp <= localTime) { setSyncStatus('idle'); return; }
 
-                        Object.keys(data.storage).forEach(k => {
-                            if(k.startsWith('kaoyan_')) localStorage.setItem(k, data.storage[k]);
-                        });
+                        Object.keys(data.storage).forEach(k => { if(k.startsWith('kaoyan_')) localStorage.setItem(k, data.storage[k]); });
                         localStorage.setItem('kaoyan_sync_time', data.timestamp);
-                        
                         if(data.storage.kaoyan_vocab_list) setWords(JSON.parse(data.storage.kaoyan_vocab_list));
                         
                         setSyncStatus('success');
@@ -1324,16 +1261,12 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                         if(isInit) alert("🚀 Gitee 同步成功！");
                         setTimeout(() => setSyncStatus('idle'), 2000);
                     }
-                } catch (e) {
-                    console.error(e);
-                    setSyncStatus('error');
-                }
+                } catch (e) { console.error(e); setSyncStatus('error'); }
             };
 
-            return { syncStatus, pushToGitee, pullFromGitee }; // 暴露手动触发方法
+            return { syncStatus, pushToGitee, pullFromGitee }; 
         };
 
-        // 主组件
         const App = () => {
             const [view, setView] = useState('home');
             const [words, setWords] = useState([]);
@@ -1352,7 +1285,6 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                 if(loader && loader.style.border) loader.remove();
             }, []);
 
-            // 启动自动同步
             const { syncStatus } = useAutoSync(words, setWords, config);
 
             const handleBack = () => {
