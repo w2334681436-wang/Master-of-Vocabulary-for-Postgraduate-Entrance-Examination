@@ -560,6 +560,89 @@
                 const newWords = words.map(w => idsToMove.includes(w.id) ? { ...w, category: targetCat } : w);
                 setWords(newWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
+const GroupList = ({ words, setWords, category, setView, setSessionConfig, config }) => {
+            const [moveModal, setMoveModal] = useState({ open: false, targetGroupWords: [] });
+            const [editModal, setEditModal] = useState({ open: false, batchId: '', currentName: '', currentDesc: '' });
+            const [customTarget, setCustomTarget] = useState('');
+            const [groupMeta, setGroupMeta] = useState({});
+
+            useEffect(() => {
+                try {
+                    const savedMeta = localStorage.getItem('kaoyan_group_meta');
+                    if (savedMeta) setGroupMeta(JSON.parse(savedMeta));
+                } catch (e) { console.error("加载分组信息失败", e); }
+            }, []);
+
+            const groups = useMemo(() => {
+                const catWords = words.filter(w => (w.category || 'uncategorized') === category);
+                const groupSize = config.groupSize || 208;
+                const batches = {};
+                catWords.forEach(w => { const batchId = w.importId || 'default'; if (!batches[batchId]) batches[batchId] = []; batches[batchId].push(w); });
+                const result = [];
+                const batchKeys = Object.keys(batches).sort((a, b) => { if (a === 'default') return -1; if (b === 'default') return 1; return parseInt(b.split('-')[1] || 0) - parseInt(a.split('-')[1] || 0); });
+                let globalIndex = 1;
+                
+                batchKeys.forEach(batchId => {
+                    const batchWords = batches[batchId]; const count = Math.ceil(batchWords.length / groupSize);
+                    for(let i=0; i<count; i++) {
+                        const start = i * groupSize; const end = Math.min((i+1) * groupSize, batchWords.length);
+                        const groupWords = batchWords.slice(start, end);
+                        
+                        // 🔥 核心修改：区分三种状态
+                        // Green (熟练): interval > 1 天
+                        const green = groupWords.filter(w => w.stats && w.stats.interval > 1).length;
+                        // Yellow (在学/不熟): interval > 0 但 <= 1 天 (刚刚背过或者选了不熟)
+                        const yellow = groupWords.filter(w => w.stats && w.stats.interval > 0 && w.stats.interval <= 1).length;
+                        // Red (生词/重置): interval == 0
+                        const red = groupWords.length - green - yellow;
+
+                        const meta = groupMeta[batchId] || {};
+                        let batchName = meta.name;
+                        if (!batchName) {
+                            if (batchId !== 'default') { 
+                                const ts = parseInt(batchId.split('-')[1]); 
+                                if (!isNaN(ts)) { const date = new Date(ts); batchName = `${date.getFullYear()}/${date.getMonth()+1}/${date.getDate()} 导入`; } else { batchName = "新批次"; } 
+                            } else { batchName = "默认词库"; }
+                        }
+                        result.push({ 
+                            index: globalIndex++, 
+                            batchId, 
+                            batchIndex: i, 
+                            batchName, 
+                            desc: meta.desc || "", 
+                            start: start + 1, 
+                            end, 
+                            total: groupWords.length, 
+                            green, 
+                            yellow, 
+                            red,
+                            words: groupWords 
+                        });
+                    }
+                });
+                return result;
+            }, [words, category, config.groupSize, groupMeta]);
+
+            const displayTitle = ({ high: "高频词", medium: "中频词", low: "低频词", zero: "零频词", uncategorized: "未分类" })[category] || category;
+            const startGroup = (batchId, batchIndex) => { setSessionConfig({ type: 'group_study', category, batchId, batchIndex }); setView('study'); };
+            
+            const handleDeleteGroup = (e, groupWords) => {
+                e.stopPropagation();
+                if(confirm(`确定要删除该组的 ${groupWords.length} 个单词吗？此操作不可恢复。`)) {
+                    const idsToDelete = groupWords.map(w => w.id);
+                    const newWords = words.filter(w => !idsToDelete.includes(w.id));
+                    setWords(newWords);
+                    localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
+                }
+            };
+
+            const openMoveModal = (e, groupWords) => { e.stopPropagation(); setMoveModal({ open: true, targetGroupWords: groupWords }); setCustomTarget(''); };
+            const performMove = (targetCat) => {
+                if(!targetCat) return;
+                const idsToMove = moveModal.targetGroupWords.map(w => w.id);
+                const newWords = words.map(w => idsToMove.includes(w.id) ? { ...w, category: targetCat } : w);
+                setWords(newWords);
+                localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
                 setMoveModal({ open: false, targetGroupWords: [] });
                 alert("转移成功！");
             };
@@ -603,9 +686,24 @@
                                     </div>
                                     <div className="mb-3 flex-1">{g.desc ? (<p className="text-xs text-gray-500 bg-gray-50 p-2 rounded border border-gray-100 line-clamp-2">{g.desc}</p>) : (<p className="text-xs text-gray-300 italic py-2">暂无备注...</p>)}</div>
                                     <div className="mt-auto">
-                                        <div className="flex justify-between text-xs text-gray-500 mb-1"><span>进度</span><span className="font-medium">{Math.round((g.mastered/g.total)*100)}%</span></div>
-                                        <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-500" style={{width: `${(g.mastered/g.total)*100}%`}}></div></div>
-                                        <p className="text-xs text-gray-400 mt-2 text-right">{g.mastered} / {g.total} 词</p>
+                                        {/* 🔥 核心修改：三色进度条 UI */}
+                                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                                            <span>进度</span>
+                                            <span className="font-medium text-indigo-600">{Math.round(((g.green + g.yellow)/g.total)*100)}%</span>
+                                        </div>
+                                        <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden flex">
+                                            {/* 熟练 (绿) */}
+                                            <div className="h-full bg-emerald-500 transition-all duration-500" style={{width: `${(g.green/g.total)*100}%`}}></div>
+                                            {/* 在学 (黄) */}
+                                            <div className="h-full bg-amber-400 transition-all duration-500" style={{width: `${(g.yellow/g.total)*100}%`}}></div>
+                                            {/* 生词 (红/灰) - 这里留白或者用淡红色，通常用底色即可，这里显式加一个红色 */}
+                                            <div className="h-full bg-red-100" style={{width: `${(g.red/g.total)*100}%`}}></div>
+                                        </div>
+                                        <div className="flex justify-between mt-2 text-[10px] text-gray-400 font-mono">
+                                            <span className="flex items-center"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1"></div>{g.green}</span>
+                                            <span className="flex items-center"><div className="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1"></div>{g.yellow}</span>
+                                            <span className="flex items-center"><div className="w-1.5 h-1.5 rounded-full bg-red-200 mr-1"></div>{g.red}</span>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
