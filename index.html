@@ -875,7 +875,7 @@
             );
         };
 
-   const ImportExport = ({ setWords, words, setView, config }) => {
+const ImportExport = ({ setWords, words, setView, config }) => {
             const [activeTab, setActiveTab] = useState('text');
             const [textInput, setTextInput] = useState('');
             const [importMode, setImportMode] = useState('frequency');
@@ -887,7 +887,7 @@
             const [aiInput, setAiInput] = useState('');
             const [isFetching, setIsFetching] = useState(false);
             const [fetchProgress, setFetchProgress] = useState({ current: 0, total: 0, success: 0, fail: 0 });
-            const [fetchLogs, setFetchLogs] = useState([]);
+            const [isSyncing, setIsSyncing] = useState(false); // 同步状态
 
             const getTargetCategory = () => { if (importMode === 'frequency') return importCategory; return customGroupName.trim() || `Import ${new Date().toLocaleDateString()}`; };
             
@@ -902,43 +902,19 @@
                 }
             };
 
-            // --- 核心升级：智能多词性解析器 ---
+            // ... (这里保留之前的 parseMultiPos 函数) ...
             const parseMultiPos = (rawWord, fullText) => {
-                // 1. 移除开头的单词本身
                 let remains = fullText.substring(rawWord.length).trim();
-                
-                // 2. 核心正则：匹配 "词性." (如 n. v. adj.)
-                // 逻辑：查找所有符合 "空格+字母+点+空格" 或 "开头+字母+点+空格" 的模式
-                // 使用捕获组 () 来保留分隔符
                 const parts = remains.split(/(?:^|\s+)([a-z]{1,5}\.)\s+/).filter(p => p.trim());
-                
                 const meanings = [];
-                // split 后数组结构通常是 [pos, def, pos, def...]
-                // 如果第一个不是 pos (比如没有词性直接是释义)，特殊处理
-                
                 for (let i = 0; i < parts.length; i++) {
                     const part = parts[i];
-                    // 判断是否是词性标记 (结尾有点)
                     if (part.match(/^[a-z]{1,5}\.$/)) {
-                        // 这是一个词性，下一个元素应该是释义
-                        const def = parts[i+1] || ""; // 防止越界
-                        meanings.push({
-                            pos: part,
-                            def: def.trim(),
-                            sentence: "",
-                            isMastered: false
-                        });
-                        i++; // 跳过下一个，因为已经作为释义处理了
+                        const def = parts[i+1] || "";
+                        meanings.push({ pos: part, def: def.trim(), sentence: "", isMastered: false });
+                        i++;
                     } else {
-                        // 如果第一项就不是词性，归类为未知
-                        if(i === 0) {
-                            meanings.push({
-                                pos: "mix.",
-                                def: part.trim(),
-                                sentence: "",
-                                isMastered: false
-                            });
-                        }
+                        if(i === 0) meanings.push({ pos: "mix.", def: part.trim(), sentence: "", isMastered: false });
                     }
                 }
                 return meanings;
@@ -949,185 +925,190 @@
                 const targetCat = getTargetCategory(); const segments = textInput.split(/[;\n]+/);
                 let addedCount = 0, mergedCount = 0; let currentWords = JSON.parse(JSON.stringify(words)); let lastWordId = null; 
                 const batchId = isNewBatch ? `batch-${Date.now()}` : 'default';
-                
                 saveBatchMeta(batchId);
-
                 segments.forEach((seg, idx) => {
                     seg = seg.trim(); if (!seg) return;
-                    // 尝试匹配单词头
                     const matchHead = seg.match(/^([a-zA-Z\-\s]+?)\s+/);
-                    
                     if (matchHead) {
                         const rawWord = matchHead[1].trim();
-                        // 使用新的解析器处理剩余部分
                         const parsedMeanings = parseMultiPos(rawWord, seg);
-                        
                         if (parsedMeanings.length > 0) {
                             const existingIdx = currentWords.findIndex(w => w.word.toLowerCase() === rawWord.toLowerCase());
                             if (!isNewBatch && existingIdx !== -1) { 
-                                // 合并逻辑
-                                const existingWord = currentWords[existingIdx]; 
-                                lastWordId = existingWord.id; 
-                                parsedMeanings.forEach(nm => {
-                                    if (!existingWord.meanings.some(om => om.pos === nm.pos && om.def === nm.def)) { 
-                                        existingWord.meanings.push(nm); 
-                                    }
-                                });
+                                const existingWord = currentWords[existingIdx]; lastWordId = existingWord.id; 
+                                parsedMeanings.forEach(nm => { if (!existingWord.meanings.some(om => om.pos === nm.pos && om.def === nm.def)) existingWord.meanings.push(nm); });
                                 mergedCount++; 
                             } else { 
-                                // 新增逻辑
                                 const newId = `auto-${Date.now()}-${idx}-${Math.random().toString(36).substr(2,5)}`; 
-                                const newWord = { 
-                                    id: newId, 
-                                    word: rawWord, 
-                                    phonetic: "", 
-                                    category: targetCat, 
-                                    importId: batchId, 
-                                    meanings: parsedMeanings, 
-                                    stats: { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 } 
-                                }; 
-                                currentWords.push(newWord); 
-                                lastWordId = newId; 
-                                addedCount++; 
+                                currentWords.push({ id: newId, word: rawWord, phonetic: "", category: targetCat, importId: batchId, meanings: parsedMeanings, stats: { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 } }); 
+                                lastWordId = newId; addedCount++; 
                             }
                         }
                     }
                 });
-                if (addedCount > 0 || mergedCount > 0) { setWords(currentWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords)); alert(`导入成功！\n新增: ${addedCount} 个\n合并: ${mergedCount} 个`); setTextInput(''); setImportBatchName(''); } else alert("未识别到有效单词，请检查格式");
+                if (addedCount > 0 || mergedCount > 0) { setWords(currentWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords)); alert(`导入成功！新增: ${addedCount}, 合并: ${mergedCount}`); setTextInput(''); setImportBatchName(''); } else alert("格式错误");
             };
 
-            // --- 核心功能：修复已存在的数据 ---
             const repairData = () => {
                 let fixedCount = 0;
                 const newWords = words.map(w => {
-                    let needsFix = false;
-                    let newMeanings = [];
-                    
+                    let needsFix = false; let newMeanings = [];
                     w.meanings.forEach(m => {
-                        // 检查释义中是否包含 " v. " 这种模式
-                        // 正则逻辑：空格 + 1-4个字母 + 点 + 空格
                         const parts = m.def.split(/\s+([a-z]{1,4}\.)\s+/);
-                        
-                        if (parts.length > 1) {
-                            needsFix = true;
-                            // 第一部分归属原词性
-                            newMeanings.push({ ...m, def: parts[0].trim() });
-                            
-                            // 后续部分拆分为新词性
-                            // parts[1]是词性, parts[2]是释义, parts[3]是词性...
-                            for (let i = 1; i < parts.length; i += 2) {
-                                if (parts[i+1]) {
-                                    newMeanings.push({
-                                        pos: parts[i], // 词性
-                                        def: parts[i+1].trim(), // 释义
-                                        sentence: "",
-                                        isMastered: false
-                                    });
-                                }
-                            }
-                        } else {
-                            newMeanings.push(m);
-                        }
+                        if (parts.length > 1) { needsFix = true; newMeanings.push({ ...m, def: parts[0].trim() }); for (let i = 1; i < parts.length; i += 2) if (parts[i+1]) newMeanings.push({ pos: parts[i], def: parts[i+1].trim(), sentence: "", isMastered: false }); } else newMeanings.push(m);
                     });
-                    
-                    if (needsFix) {
-                        fixedCount++;
-                        return { ...w, meanings: newMeanings };
-                    }
-                    return w;
+                    if (needsFix) { fixedCount++; return { ...w, meanings: newMeanings }; } return w;
                 });
-                
-                if (fixedCount > 0) {
-                    setWords(newWords);
-                    localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
-                    alert(`🎉 修复成功！\n\n共整理了 ${fixedCount} 个单词的词性格式。\n快去单词列表看看吧！`);
-                } else {
-                    alert("扫描完成，暂未发现格式错乱的单词。");
-                }
+                if (fixedCount > 0) { setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); alert(`🎉 修复成功！整理了 ${fixedCount} 个单词。`); } else alert("暂未发现格式错乱的单词。");
             };
 
             const fetchWordsFromAI = async () => {
                 if (!config.apiKey) { alert("请配置 Key"); return; } if (!aiInput.trim()) return; const wordList = aiInput.split(/[\s,\n]+/).filter(w => w.trim().match(/^[a-zA-Z\-]+$/)); if(wordList.length===0) return;
-                setIsFetching(true); setFetchProgress({ current: 0, total: wordList.length, success: 0, fail: 0 }); setFetchLogs([]); const targetCat = getTargetCategory(); 
-                
-                const batchId = isNewBatch ? `batch-${Date.now()}` : 'default';
-                saveBatchMeta(batchId);
-
+                setIsFetching(true); setFetchProgress({ current: 0, total: wordList.length, success: 0, fail: 0 }); const targetCat = getTargetCategory(); 
+                const batchId = isNewBatch ? `batch-${Date.now()}` : 'default'; saveBatchMeta(batchId);
                 const BATCH_SIZE = 5; let currentWords = JSON.parse(JSON.stringify(words)); let successCount = 0; let failCount = 0;
                 for (let i = 0; i < wordList.length; i += BATCH_SIZE) {
                     const batch = wordList.slice(i, i + BATCH_SIZE); const batchStr = batch.join(", "); const prompt = `考研单词查询JSON:[${batchStr}]`;
                     try {
                         let jsonStr=""; if(config.type==='google'){ const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})}); const data=await res.json(); jsonStr=data.candidates?.[0]?.content?.parts?.[0]?.text; } else { let baseUrl=config.baseUrl.replace(/\/$/,""); if(!baseUrl.includes("/v1")&&!baseUrl.includes("aliyuncs")&&!baseUrl.includes("bigmodel")&&!baseUrl.includes("lingyiwanwu")&&!baseUrl.includes("siliconflow"))baseUrl+="/v1"; const res=await fetch(`${baseUrl}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${config.apiKey}`},body:JSON.stringify({model:config.model,messages:[{role:"user",content:prompt}]})}); const data=await res.json(); jsonStr=data.choices?.[0]?.message?.content; }
                         if(!jsonStr) throw new Error("Empty"); jsonStr=jsonStr.replace(/```json/g,'').replace(/```/g,'').trim(); const parsedBatch=JSON.parse(jsonStr);
-                        if(Array.isArray(parsedBatch)){ parsedBatch.forEach(item=>{ const existIdx=currentWords.findIndex(w=>w.word.toLowerCase()===item.word.toLowerCase()); const meanings=item.meanings.map(m=>({...m,sentence:"",isMastered:false})); if(!isNewBatch && existIdx!==-1){ item.meanings.forEach(nm=>{ if(!currentWords[existIdx].meanings.some(om=>om.pos===nm.pos && om.def===nm.def)) currentWords[existIdx].meanings.push({...nm,sentence:"",isMastered:false}); }); }else{ currentWords.push({id:`ai-${Date.now()}-${Math.random()}`,word:item.word,phonetic:item.phonetic||"",category:targetCat,importId:batchId,meanings,stats:{interval:0,easeFactor:2.5,nextReview:0,reviewCount:0}}); } }); successCount+=batch.length; setFetchLogs(p=>[`✅ ${batchStr}`,...p]); }
-                    } catch(err){ failCount+=batch.length; setFetchLogs(p=>[`❌ ${batchStr}`,...p]); }
+                        if(Array.isArray(parsedBatch)){ parsedBatch.forEach(item=>{ const existIdx=currentWords.findIndex(w=>w.word.toLowerCase()===item.word.toLowerCase()); const meanings=item.meanings.map(m=>({...m,sentence:"",isMastered:false})); if(!isNewBatch && existIdx!==-1){ item.meanings.forEach(nm=>{ if(!currentWords[existIdx].meanings.some(om=>om.pos===nm.pos && om.def===nm.def)) currentWords[existIdx].meanings.push({...nm,sentence:"",isMastered:false}); }); }else{ currentWords.push({id:`ai-${Date.now()}-${Math.random()}`,word:item.word,phonetic:item.phonetic||"",category:targetCat,importId:batchId,meanings,stats:{interval:0,easeFactor:2.5,nextReview:0,reviewCount:0}}); } }); successCount+=batch.length; }
+                    } catch(err){ failCount+=batch.length; }
                     setFetchProgress({ current: Math.min(i+BATCH_SIZE, wordList.length), total: wordList.length, success: successCount, fail: failCount }); setWords([...currentWords]); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords));
                 } setIsFetching(false); alert("完成"); setImportBatchName('');
             };
-            const handleFile = (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { try { const content = JSON.parse(ev.target.result); if (content.type === 'KAOYAN_FULL_BACKUP' && content.storage) { const dateStr = new Date(content.timestamp).toLocaleString(); if(confirm(`检测到完整备份 (${dateStr})。\n恢复将覆盖当前数据，确定吗？`)) { Object.keys(content.storage).forEach(key => { if(key.startsWith('kaoyan_')) localStorage.setItem(key, content.storage[key]); }); alert("恢复成功，页面将刷新"); window.location.reload(); } return; } if (Array.isArray(content)) { if(confirm(`检测到旧版单词表 (${content.length}词)。\n确定导入吗？`)) { setWords(content); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(content)); alert("单词库已更新"); } return; } alert("格式错误"); } catch(err) { alert("解析错误: " + err.message); } }; reader.readAsText(file); };
+
+            const handleFile = (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { try { const content = JSON.parse(ev.target.result); if (content.type === 'KAOYAN_FULL_BACKUP' && content.storage) { if(confirm(`恢复备份将覆盖当前数据，确定吗？`)) { Object.keys(content.storage).forEach(key => { if(key.startsWith('kaoyan_')) localStorage.setItem(key, content.storage[key]); }); window.location.reload(); } return; } if (Array.isArray(content)) { if(confirm(`导入旧版单词表?`)) { setWords(content); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(content)); alert("完成"); } return; } } catch(err) { alert("错误"); } }; reader.readAsText(file); };
+            
             const exportFullData = () => { const storage = {}; for(let i=0; i<localStorage.length; i++) { const key = localStorage.key(i); if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key); } const backup = { type: 'KAOYAN_FULL_BACKUP', version: 1.0, timestamp: Date.now(), storage }; const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; const date = new Date(); a.download = `考研词汇_备份_${date.getFullYear()}${date.getMonth()+1}${date.getDate()}.json`; a.click(); };
+
+            // --- 云同步核心逻辑 ---
+            const syncToCloud = async () => {
+                if (!config.jsonbinKey || !config.jsonbinId) { alert("请先去[设置]页面配置 JSONBin 的 Key 和 ID"); return; }
+                if (!confirm("⚠️ 警告：上传将覆盖云端旧数据！\n\n确定要将当前手机上的所有数据推送到云端吗？")) return;
+                
+                setIsSyncing(true);
+                try {
+                    // 1. 打包本地数据
+                    const storage = {}; 
+                    for(let i=0; i<localStorage.length; i++) { 
+                        const key = localStorage.key(i); 
+                        if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key); 
+                    }
+                    const backup = { type: 'KAOYAN_CLOUD_SYNC', timestamp: Date.now(), storage };
+
+                    // 2. 推送
+                    const res = await fetch(`https://api.jsonbin.io/v3/b/${config.jsonbinId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Master-Key': config.jsonbinKey
+                        },
+                        body: JSON.stringify(backup)
+                    });
+
+                    if (!res.ok) throw new Error(`上传失败: ${res.status}`);
+                    alert("✅ 上传成功！\n\n现在你可以在另一台设备上点击[下载]了。");
+                } catch (e) {
+                    alert("同步错误: " + e.message);
+                } finally {
+                    setIsSyncing(false);
+                }
+            };
+
+            const syncFromCloud = async () => {
+                if (!config.jsonbinKey || !config.jsonbinId) { alert("请先去[设置]页面配置 JSONBin 的 Key 和 ID"); return; }
+                if (!confirm("⚠️ 警告：下载将覆盖本地当前数据！\n\n确定要从云端拉取数据吗？此操作不可撤销。")) return;
+
+                setIsSyncing(true);
+                try {
+                    const res = await fetch(`https://api.jsonbin.io/v3/b/${config.jsonbinId}/latest`, {
+                        method: 'GET',
+                        headers: { 'X-Master-Key': config.jsonbinKey }
+                    });
+
+                    if (!res.ok) throw new Error(`下载失败: ${res.status}`);
+                    const json = await res.json();
+                    const data = json.record;
+
+                    if (data && data.storage) {
+                        // 恢复数据
+                        Object.keys(data.storage).forEach(key => {
+                            if(key.startsWith('kaoyan_')) localStorage.setItem(key, data.storage[key]);
+                        });
+                        const dateStr = new Date(data.timestamp).toLocaleString();
+                        alert(`✅ 同步成功！\n数据版本: ${dateStr}\n\n页面即将刷新...`);
+                        window.location.reload();
+                    } else {
+                        alert("云端数据格式不正确");
+                    }
+                } catch (e) {
+                    alert("同步错误: " + e.message);
+                } finally {
+                    setIsSyncing(false);
+                }
+            };
 
             return (
                 <div className="flex-1 overflow-y-auto custom-scroll bg-gray-50 p-4 flex justify-center">
                     <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 h-fit">
-                        <h2 className="text-2xl font-bold mb-6 text-gray-800">导入导出</h2>
+                        <h2 className="text-2xl font-bold mb-6 text-gray-800">数据中心</h2>
                         <div className="flex mb-6 border-b border-gray-100">
                             <button onClick={() => setActiveTab('ai')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='ai'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>AI 速查</button>
                             <button onClick={() => setActiveTab('text')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='text'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>批量粘贴</button>
-                            <button onClick={() => setActiveTab('data')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='data'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>数据管理</button>
+                            <button onClick={() => setActiveTab('data')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='data'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>管理与同步</button>
                         </div>
                         
                         {(activeTab === 'ai' || activeTab === 'text') && (
                             <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                                <label className="block text-xs font-bold text-gray-400 mb-3 uppercase tracking-wide">1. 导入目标</label>
                                 <div className="flex space-x-6 mb-4">
-                                    <label className="flex items-center cursor-pointer"><input type="radio" checked={importMode==='frequency'} onChange={()=>setImportMode('frequency')} className="w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"/><span className="ml-2 text-sm font-medium">存入考频</span></label>
-                                    <label className="flex items-center cursor-pointer"><input type="radio" checked={importMode==='group'} onChange={()=>setImportMode('group')} className="w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"/><span className="ml-2 text-sm font-medium">自定义分组</span></label>
+                                    <label className="flex items-center cursor-pointer"><input type="radio" checked={importMode==='frequency'} onChange={()=>setImportMode('frequency')} className="w-4 h-4 text-indigo-600"/><span className="ml-2 text-sm font-medium">存入考频</span></label>
+                                    <label className="flex items-center cursor-pointer"><input type="radio" checked={importMode==='group'} onChange={()=>setImportMode('group')} className="w-4 h-4 text-indigo-600"/><span className="ml-2 text-sm font-medium">自定义分组</span></label>
                                 </div>
-                                {importMode==='frequency' ? (<div className="grid grid-cols-4 gap-2 mb-4">{['high','medium','low','zero'].map(cat=>(<button key={cat} onClick={()=>setImportCategory(cat)} className={`py-2 text-sm rounded-lg border transition-all ${importCategory===cat?'bg-indigo-600 text-white border-indigo-600 shadow-sm':'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}>{cat}</button>))}</div>) : (<div className="mb-4"><input type="text" value={customGroupName} onChange={e=>setCustomGroupName(e.target.value)} placeholder="输入分组名称" className="w-full p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"/></div>)}
-                                <label className="flex items-center pt-4 border-t border-gray-200 cursor-pointer"><input type="checkbox" checked={isNewBatch} onChange={e=>setIsNewBatch(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"/><span className="ml-2 text-sm font-bold text-gray-700">独立为新批次</span></label>
-                                {isNewBatch && (
-                                    <div className="mt-4 animate-fade-in">
-                                        <label className="block text-xs font-bold text-indigo-500 mb-1">批次命名 (可选)</label>
-                                        <input type="text" value={importBatchName} onChange={e=>setImportBatchName(e.target.value)} placeholder="例如: 2015真题阅读PartA" className="w-full p-3 border border-indigo-200 bg-indigo-50 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"/>
-                                    </div>
-                                )}
+                                {importMode==='frequency' ? (<div className="grid grid-cols-4 gap-2 mb-4">{['high','medium','low','zero'].map(cat=>(<button key={cat} onClick={()=>setImportCategory(cat)} className={`py-2 text-sm rounded-lg border ${importCategory===cat?'bg-indigo-600 text-white':'bg-white text-gray-600'}`}>{cat}</button>))}</div>) : (<div className="mb-4"><input type="text" value={customGroupName} onChange={e=>setCustomGroupName(e.target.value)} placeholder="输入分组名称" className="w-full p-3 border rounded-lg text-sm outline-none"/></div>)}
+                                <label className="flex items-center pt-4 border-t border-gray-200 cursor-pointer"><input type="checkbox" checked={isNewBatch} onChange={e=>setIsNewBatch(e.target.checked)} className="w-4 h-4 text-indigo-600"/><span className="ml-2 text-sm font-bold text-gray-700">独立为新批次</span></label>
+                                {isNewBatch && (<div className="mt-4 animate-fade-in"><input type="text" value={importBatchName} onChange={e=>setImportBatchName(e.target.value)} placeholder="例如: 2015真题" className="w-full p-3 border border-indigo-200 bg-indigo-50 rounded-lg text-sm outline-none"/></div>)}
                             </div>
                         )}
 
-                        {activeTab === 'ai' && (<div className="space-y-4"><textarea value={aiInput} onChange={e => setAiInput(e.target.value)} placeholder="请输入单词..." className="w-full h-40 p-4 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none bg-gray-50 focus:bg-white transition"></textarea>{isFetching ? <div className="text-center text-sm py-3 bg-indigo-50 text-indigo-600 rounded-xl animate-pulse font-medium">AI 抓取中... {fetchProgress.current}/{fetchProgress.total}</div> : <button onClick={fetchWordsFromAI} className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 transition transform active:scale-[0.98]"><Icon name="CloudDownload" size={20}/> 开始智能抓取</button>}</div>)}
-                        {activeTab === 'text' && (<div className="space-y-4"><textarea value={textInput} onChange={e => setTextInput(e.target.value)} placeholder="格式：word n. 释义 v. 释义..." className="w-full h-48 p-4 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none bg-gray-50 focus:bg-white transition"></textarea><button onClick={parseAndImport} className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition transform active:scale-[0.98]">开始导入</button></div>)}
+                        {activeTab === 'ai' && (<div className="space-y-4"><textarea value={aiInput} onChange={e => setAiInput(e.target.value)} placeholder="输入单词..." className="w-full h-40 p-4 border rounded-xl text-sm outline-none resize-none"></textarea>{isFetching ? <div className="text-center text-sm py-3 bg-indigo-50 text-indigo-600 rounded-xl animate-pulse">AI 抓取中...</div> : <button onClick={fetchWordsFromAI} className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-2"><Icon name="CloudDownload" size={20}/> 开始</button>}</div>)}
+                        {activeTab === 'text' && (<div className="space-y-4"><textarea value={textInput} onChange={e => setTextInput(e.target.value)} placeholder="格式：word n. 释义 v. 释义..." className="w-full h-48 p-4 border rounded-xl text-sm outline-none resize-none"></textarea><button onClick={parseAndImport} className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg">开始导入</button></div>)}
                         
                         {activeTab === 'data' && (
                             <div className="space-y-6 animate-fade-in">
-                                {/* 修复工具 - 新增 */}
-                                <div className="p-6 bg-orange-50 border border-orange-100 rounded-2xl space-y-4">
-                                    <h3 className="font-bold text-orange-900 flex items-center"><Icon name="Sparkles" className="mr-2"/> 智能数据修复</h3>
-                                    <p className="text-sm text-orange-700/80">如果你发现某些单词的词性（如 v. adj.）被错误地显示在了释义里，点击下方按钮一键自动整理。</p>
-                                    <button onClick={repairData} className="w-full py-3 bg-white text-orange-600 border border-orange-200 rounded-xl font-bold shadow-sm hover:bg-orange-100 transition">🛠️ 立即修复词性格式</button>
+                                {/* 云同步区域 */}
+                                <div className="p-6 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl text-white shadow-lg">
+                                    <div className="flex items-center mb-4"><Icon name="CloudDownload" size={24} className="mr-2"/><h3 className="font-bold text-lg">云端无缝同步</h3></div>
+                                    <p className="text-indigo-100 text-xs mb-6 opacity-90">将当前进度同步到云端，或从云端拉取最新进度。请确保已在设置中配置 JSONBin。</p>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <button onClick={syncToCloud} disabled={isSyncing} className="py-3 bg-white/20 hover:bg-white/30 border border-white/30 rounded-xl font-bold backdrop-blur-sm transition flex flex-col items-center justify-center">
+                                            {isSyncing ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mb-1"></div> : <Icon name="Upload" size={20} className="mb-1"/>}
+                                            <span className="text-xs">上传至云端</span>
+                                        </button>
+                                        <button onClick={syncFromCloud} disabled={isSyncing} className="py-3 bg-white text-indigo-600 hover:bg-gray-50 rounded-xl font-bold shadow-sm transition flex flex-col items-center justify-center">
+                                            {isSyncing ? <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mb-1"></div> : <Icon name="Download" size={20} className="mb-1"/>}
+                                            <span className="text-xs">从云端下载</span>
+                                        </button>
+                                    </div>
                                 </div>
 
-                                <div className="p-6 border-2 border-dashed border-indigo-100 rounded-2xl bg-indigo-50/50 text-center hover:bg-indigo-50 transition group cursor-pointer relative">
-                                    <div className="text-indigo-400 mb-3 group-hover:scale-110 transition-transform duration-300"><Icon name="Upload" size={40} className="mx-auto"/></div>
-                                    <h3 className="text-indigo-900 font-bold text-lg mb-1">恢复数据</h3>
-                                    <p className="text-indigo-400 text-xs">支持旧版单词表 / 新版全站备份</p>
-                                    <input type="file" onChange={handleFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/>
+                                {/* 修复工具 */}
+                                <div className="p-5 bg-orange-50 border border-orange-100 rounded-2xl flex justify-between items-center">
+                                    <div><h3 className="font-bold text-orange-900 text-sm mb-1">词性格式修复</h3><p className="text-xs text-orange-700/70">自动拆分 v. adj. 等连在一起的释义</p></div>
+                                    <button onClick={repairData} className="px-4 py-2 bg-white text-orange-600 border border-orange-200 rounded-lg font-bold text-xs shadow-sm hover:bg-orange-100">🛠️ 修复</button>
                                 </div>
 
-                                <div className="grid grid-cols-1 gap-4">
-                                    <button onClick={exportFullData} className="w-full py-4 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-3 transition transform active:scale-[0.98]">
-                                        <Icon name="Download" size={20}/> 
-                                        <div className="text-left">
-                                            <div className="text-sm">导出全站备份 (推荐)</div>
-                                            <div className="text-[10px] font-normal opacity-70">包含单词、设置、分组备注等所有数据</div>
-                                        </div>
-                                    </button>
+                                {/* 本地备份 */}
+                                <div className="grid grid-cols-2 gap-4 pt-2">
+                                    <button onClick={exportFullData} className="py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-sm flex items-center justify-center"><Icon name="Download" size={16} className="mr-2"/> 导出文件</button>
+                                    <div className="relative">
+                                        <button className="w-full h-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-sm flex items-center justify-center"><Icon name="Upload" size={16} className="mr-2"/> 恢复文件</button>
+                                        <input type="file" onChange={handleFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/>
+                                    </div>
                                 </div>
 
-                                <div className="pt-6 border-t border-gray-100">
-                                    <button onClick={() => {if(confirm('⚠️ 高危操作！\n\n确定要清空【所有】数据吗？此操作不可恢复！\n\n建议先点击上方按钮进行备份。')) { setWords([]); localStorage.clear(); window.location.reload(); }}} className="w-full py-3 bg-white border border-red-100 text-red-500 hover:bg-red-50 rounded-xl text-sm font-medium flex items-center justify-center transition">
-                                        <Icon name="Trash2" size={16} className="mr-2"/> 重置应用 (清空所有数据)
-                                    </button>
+                                <div className="pt-4 border-t border-gray-100 text-center">
+                                    <button onClick={() => {if(confirm('⚠️ 确定要清空所有数据吗？此操作不可恢复！')) { setWords([]); localStorage.clear(); window.location.reload(); }}} className="text-red-400 text-xs hover:text-red-600 underline">重置应用 (清空数据)</button>
                                 </div>
                             </div>
                         )}
@@ -1136,7 +1117,7 @@
             );
         };
 
-        const SettingsPanel = ({ config, setConfig, setView }) => {
+      const SettingsPanel = ({ config, setConfig, setView }) => {
             const [selectedPreset, setSelectedPreset] = useState('deepseek');
             const [modelList, setModelList] = useState([]);
             const [modelSearch, setModelSearch] = useState('');
@@ -1186,50 +1167,63 @@
 
             return (
                 <div className="flex-1 overflow-y-auto custom-scroll bg-gray-50 p-4 flex justify-center">
-                    <div className="w-full max-w-xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 h-fit space-y-6">
-                        <h2 className="text-2xl font-bold border-b border-gray-100 pb-4 text-gray-800">API 设置</h2>
+                    <div className="w-full max-w-xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 h-fit space-y-8">
                         
-                        <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">服务商</label>
-                            <div className="relative">
-                                <select value={selectedPreset} onChange={(e) => handlePresetChange(e.target.value)} className="w-full border border-gray-200 p-3 rounded-xl appearance-none bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition">
-                                    {Object.entries(API_PRESETS).map(([key, val]) => (<option key={key} value={key}>{val.name}</option>))}
-                                </select>
-                                <div className="absolute right-3 top-3.5 text-gray-400 pointer-events-none"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+                        {/* 1. AI 设置区域 */}
+                        <div className="space-y-6">
+                            <h2 className="text-xl font-bold border-b border-gray-100 pb-2 text-gray-800 flex items-center"><Icon name="Brain" size={22} className="mr-2 text-indigo-600"/> AI 设置</h2>
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">服务商</label>
+                                <div className="relative">
+                                    <select value={selectedPreset} onChange={(e) => handlePresetChange(e.target.value)} className="w-full border border-gray-200 p-3 rounded-xl appearance-none bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition">
+                                        {Object.entries(API_PRESETS).map(([key, val]) => (<option key={key} value={key}>{val.name}</option>))}
+                                    </select>
+                                    <div className="absolute right-3 top-3.5 text-gray-400 pointer-events-none"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg></div>
+                                </div>
+                            </div>
+
+                            <div className={selectedPreset === 'google' ? 'hidden' : 'block'}>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">API Endpoint</label>
+                                <input value={config.baseUrl} onChange={e => setConfig({...config, baseUrl: e.target.value})} className={`w-full border border-gray-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition ${selectedPreset !== 'custom' ? 'bg-gray-100 text-gray-500' : 'bg-gray-50'}`} disabled={selectedPreset !== 'custom'}/>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">API Key</label>
+                                <input value={config.apiKey} onChange={e => setConfig({...config, apiKey: e.target.value})} type="password" placeholder="sk-..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
+                            </div>
+
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="block text-sm font-bold text-gray-700">模型名称</label>
+                                    <button onClick={fetchModels} disabled={isFetchingModels || !config.apiKey} className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg font-medium hover:bg-indigo-100 transition disabled:opacity-50">{isFetchingModels ? "获取中..." : "获取列表"}</button>
+                                </div>
+                                <input value={config.model} onChange={e => setConfig({...config, model: e.target.value})} placeholder="例如: deepseek-chat" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
                             </div>
                         </div>
 
-                        <div className={selectedPreset === 'google' ? 'hidden' : 'block'}>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">API Endpoint (Base URL)</label>
-                            <input value={config.baseUrl} onChange={e => setConfig({...config, baseUrl: e.target.value})} className={`w-full border border-gray-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition ${selectedPreset !== 'custom' ? 'bg-gray-100 text-gray-500' : 'bg-gray-50'}`} disabled={selectedPreset !== 'custom'}/>
+                        {/* 2. 云同步设置区域 (新增) */}
+                        <div className="space-y-6 pt-2">
+                            <h2 className="text-xl font-bold border-b border-gray-100 pb-2 text-gray-800 flex items-center"><Icon name="CloudDownload" size={22} className="mr-2 text-indigo-600"/> 云同步设置 (JSONBin)</h2>
+                            <div className="bg-indigo-50 p-3 rounded-lg text-xs text-indigo-800 leading-relaxed">
+                                这是一个免费的云存储服务。注册 JSONBin.io 后填入信息，即可实现多端同步。
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">Master Key (X-Master-Key)</label>
+                                <input value={config.jsonbinKey || ''} onChange={e => setConfig({...config, jsonbinKey: e.target.value})} type="password" placeholder="$2b$10..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">Bin ID</label>
+                                <input value={config.jsonbinId || ''} onChange={e => setConfig({...config, jsonbinId: e.target.value})} placeholder="656..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
+                            </div>
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-2">API Key</label>
-                            <input value={config.apiKey} onChange={e => setConfig({...config, apiKey: e.target.value})} type="password" placeholder="sk-..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
+                        {/* 3. 其他设置 */}
+                        <div className="space-y-6 pt-2">
+                            <h2 className="text-xl font-bold border-b border-gray-100 pb-2 text-gray-800 flex items-center"><Icon name="Settings" size={22} className="mr-2 text-indigo-600"/> 其他</h2>
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-2">单组单词量</label>
                                 <input type="number" value={config.groupSize || 208} onChange={e => setConfig({...config, groupSize: parseInt(e.target.value)||208})} className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition"/>
                             </div>
-                        </div>
-
-                        <div>
-                            <div className="flex justify-between items-center mb-2">
-                                <label className="block text-sm font-bold text-gray-700">模型名称</label>
-                                <button onClick={fetchModels} disabled={isFetchingModels || !config.apiKey} className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg font-medium hover:bg-indigo-100 transition disabled:opacity-50">{isFetchingModels ? "获取中..." : "获取列表"}</button>
-                            </div>
-                            {modelList.length > 0 && (
-                                <div className="mb-2 border border-gray-200 rounded-xl overflow-hidden">
-                                    <input value={modelSearch} onChange={e => setModelSearch(e.target.value)} placeholder="搜索模型..." className="w-full p-3 text-sm bg-gray-50 border-b border-gray-100 outline-none"/>
-                                    <select onChange={e => setConfig({...config, model: e.target.value})} value={config.model} className="w-full p-2 bg-white text-sm outline-none" size={5}>
-                                        {filteredModels.map(m => <option key={m} value={m} className="p-2 hover:bg-indigo-50 cursor-pointer">{m}</option>)}
-                                    </select>
-                                </div>
-                            )}
-                            <input value={config.model} onChange={e => setConfig({...config, model: e.target.value})} placeholder="例如: gpt-3.5-turbo" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
                         </div>
 
                         <button onClick={()=>{ localStorage.setItem('kaoyan_config', JSON.stringify(config)); setView('home'); }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-xl font-bold shadow-lg shadow-indigo-200 transition transform active:scale-[0.98]">保存并返回</button>
