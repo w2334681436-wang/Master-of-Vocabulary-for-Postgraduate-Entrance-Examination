@@ -825,7 +825,7 @@
             );
         };
 
-        const ImportExport = ({ setWords, words, setView, config }) => {
+       const ImportExport = ({ setWords, words, setView, config }) => {
             const [activeTab, setActiveTab] = useState('data');
             const [textInput, setTextInput] = useState('');
             const [importMode, setImportMode] = useState('frequency');
@@ -886,6 +886,46 @@
                 if (fixedCount > 0) { setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); alert(`🎉 修复成功！整理了 ${fixedCount} 个单词。`); } else alert("暂未发现格式错乱的单词。");
             };
 
+            // 🔥 新增：深度拆分释义功能
+            const deepSplitMeanings = () => {
+                let splitCount = 0;
+                let wordCount = 0;
+                const newWords = words.map(w => {
+                    let hasSplit = false;
+                    let newMeanings = [];
+                    w.meanings.forEach(m => {
+                        // 逻辑：遇到分号(;|；)或者序号(1. 2.)就拆分
+                        // 排除中文逗号，因为有时候是同义词(跑，奔跑)不应该拆
+                        // 排除英文逗号，风险太大
+                        const separators = /[;；]|\s\d+\.\s/; 
+                        if (m.def.match(separators)) {
+                            hasSplit = true;
+                            // 拆分后清理空白和序号
+                            const parts = m.def.split(separators).map(s => s.trim().replace(/^\d+\.\s*/, '')).filter(s => s);
+                            parts.forEach(part => {
+                                // 继承原有的属性 (mastered, sentence)
+                                // 如果原来整个词条是 mastered，拆分后也都算 mastered
+                                // 如果原来不是，则都算 false，由用户重新勾选
+                                newMeanings.push({ ...m, def: part, sentence: m.sentence || "" }); 
+                                splitCount++;
+                            });
+                        } else {
+                            newMeanings.push(m);
+                        }
+                    });
+                    if (hasSplit) wordCount++;
+                    return { ...w, meanings: newMeanings };
+                });
+
+                if (splitCount > 0) {
+                    setWords(newWords);
+                    localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
+                    alert(`🔪 手术完成！\n\n共处理了 ${wordCount} 个单词\n裂变出了 ${splitCount} 条细分释义\n\n现在你可以去背单词页面，点击"眼睛"或"勾号"单独隐藏那些你已经会的意思了！`);
+                } else {
+                    alert("扫描完毕，未发现需要拆分的复杂释义。");
+                }
+            };
+
             const fetchWordsFromAI = async () => {
                 if (!config.apiKey) { alert("请配置 Key"); return; } if (!aiInput.trim()) return; const wordList = aiInput.split(/[\s,\n]+/).filter(w => w.trim().match(/^[a-zA-Z\-]+$/)); if(wordList.length===0) return;
                 setIsFetching(true); setFetchProgress({ current: 0, total: wordList.length, success: 0, fail: 0 }); const targetCat = getTargetCategory(); 
@@ -924,9 +964,16 @@
                         
                         {activeTab === 'data' && (
                             <div className="space-y-6 animate-fade-in">
-                                <div className="p-5 bg-orange-50 border border-orange-100 rounded-2xl flex justify-between items-center shadow-sm">
-                                    <div><h3 className="font-bold text-orange-900 text-sm mb-1">词性格式修复</h3><p className="text-xs text-orange-700/70">自动拆分 v. adj. 等连在一起的释义</p></div>
-                                    <button onClick={repairData} className="px-4 py-2 bg-white text-orange-600 border border-orange-200 rounded-lg font-bold text-xs shadow-sm hover:bg-orange-100 transition">🛠️ 修复</button>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="p-4 bg-orange-50 border border-orange-100 rounded-2xl shadow-sm flex flex-col justify-between">
+                                        <div><h3 className="font-bold text-orange-900 text-sm mb-1">格式修复</h3><p className="text-xs text-orange-700/70 mb-2">分离连在一起的 n. v.</p></div>
+                                        <button onClick={repairData} className="w-full py-2 bg-white text-orange-600 border border-orange-200 rounded-lg font-bold text-xs shadow-sm hover:bg-orange-100 transition">修复</button>
+                                    </div>
+                                    {/* 🔥 新增：深度拆分按钮 */}
+                                    <div className="p-4 bg-purple-50 border border-purple-100 rounded-2xl shadow-sm flex flex-col justify-between">
+                                        <div><h3 className="font-bold text-purple-900 text-sm mb-1">深度细分释义</h3><p className="text-xs text-purple-700/70 mb-2">按分号炸开熟词僻义</p></div>
+                                        <button onClick={deepSplitMeanings} className="w-full py-2 bg-white text-purple-600 border border-purple-200 rounded-lg font-bold text-xs shadow-sm hover:bg-purple-100 transition">开始拆分</button>
+                                    </div>
                                 </div>
 
                                 <div className="p-6 bg-indigo-50 rounded-2xl border border-indigo-100 shadow-sm">
