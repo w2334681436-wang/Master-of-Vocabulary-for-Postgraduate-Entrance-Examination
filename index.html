@@ -902,7 +902,6 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                 }
             };
 
-            // ... (这里保留之前的 parseMultiPos 函数) ...
             const parseMultiPos = (rawWord, fullText) => {
                 let remains = fullText.substring(rawWord.length).trim();
                 const parts = remains.split(/(?:^|\s+)([a-z]{1,5}\.)\s+/).filter(p => p.trim());
@@ -970,7 +969,7 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                 for (let i = 0; i < wordList.length; i += BATCH_SIZE) {
                     const batch = wordList.slice(i, i + BATCH_SIZE); const batchStr = batch.join(", "); const prompt = `考研单词查询JSON:[${batchStr}]`;
                     try {
-                        let jsonStr=""; if(config.type==='google'){ const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})}); const data=await res.json(); jsonStr=data.candidates?.[0]?.content?.parts?.[0]?.text; } else { let baseUrl=config.baseUrl.replace(/\/$/,""); if(!baseUrl.includes("/v1")&&!baseUrl.includes("aliyuncs")&&!baseUrl.includes("bigmodel")&&!baseUrl.includes("lingyiwanwu")&&!baseUrl.includes("siliconflow"))baseUrl+="/v1"; const res=await fetch(`${baseUrl}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${config.apiKey}`},body:JSON.stringify({model:config.model,messages:[{role:"user",content:prompt}]})}); const data=await res.json(); jsonStr=data.choices?.[0]?.message?.content; }
+                        let jsonStr=""; if(config.type==='google'){ const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey.trim()}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})}); const data=await res.json(); jsonStr=data.candidates?.[0]?.content?.parts?.[0]?.text; } else { let baseUrl=config.baseUrl.replace(/\/$/,""); if(!baseUrl.includes("/v1")&&!baseUrl.includes("aliyuncs")&&!baseUrl.includes("bigmodel")&&!baseUrl.includes("lingyiwanwu")&&!baseUrl.includes("siliconflow"))baseUrl+="/v1"; const res=await fetch(`${baseUrl}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${config.apiKey.trim()}`},body:JSON.stringify({model:config.model,messages:[{role:"user",content:prompt}]})}); const data=await res.json(); jsonStr=data.choices?.[0]?.message?.content; }
                         if(!jsonStr) throw new Error("Empty"); jsonStr=jsonStr.replace(/```json/g,'').replace(/```/g,'').trim(); const parsedBatch=JSON.parse(jsonStr);
                         if(Array.isArray(parsedBatch)){ parsedBatch.forEach(item=>{ const existIdx=currentWords.findIndex(w=>w.word.toLowerCase()===item.word.toLowerCase()); const meanings=item.meanings.map(m=>({...m,sentence:"",isMastered:false})); if(!isNewBatch && existIdx!==-1){ item.meanings.forEach(nm=>{ if(!currentWords[existIdx].meanings.some(om=>om.pos===nm.pos && om.def===nm.def)) currentWords[existIdx].meanings.push({...nm,sentence:"",isMastered:false}); }); }else{ currentWords.push({id:`ai-${Date.now()}-${Math.random()}`,word:item.word,phonetic:item.phonetic||"",category:targetCat,importId:batchId,meanings,stats:{interval:0,easeFactor:2.5,nextReview:0,reviewCount:0}}); } }); successCount+=batch.length; }
                     } catch(err){ failCount+=batch.length; }
@@ -982,27 +981,28 @@ const ImportExport = ({ setWords, words, setView, config }) => {
             
             const exportFullData = () => { const storage = {}; for(let i=0; i<localStorage.length; i++) { const key = localStorage.key(i); if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key); } const backup = { type: 'KAOYAN_FULL_BACKUP', version: 1.0, timestamp: Date.now(), storage }; const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; const date = new Date(); a.download = `考研词汇_备份_${date.getFullYear()}${date.getMonth()+1}${date.getDate()}.json`; a.click(); };
 
-            // --- 云同步核心逻辑 ---
+            // --- 云同步核心逻辑 (双重去空格保护) ---
             const syncToCloud = async () => {
-                if (!config.jsonbinKey || !config.jsonbinId) { alert("请先去[设置]页面配置 JSONBin 的 Key 和 ID"); return; }
+                const key = config.jsonbinKey ? config.jsonbinKey.trim() : "";
+                const id = config.jsonbinId ? config.jsonbinId.trim() : "";
+
+                if (!key || !id) { alert("请先去[设置]页面配置 JSONBin 的 Key 和 ID"); return; }
                 if (!confirm("⚠️ 警告：上传将覆盖云端旧数据！\n\n确定要将当前手机上的所有数据推送到云端吗？")) return;
                 
                 setIsSyncing(true);
                 try {
-                    // 1. 打包本地数据
                     const storage = {}; 
                     for(let i=0; i<localStorage.length; i++) { 
-                        const key = localStorage.key(i); 
-                        if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key); 
+                        const k = localStorage.key(i); 
+                        if(k && k.startsWith('kaoyan_')) storage[k] = localStorage.getItem(k); 
                     }
                     const backup = { type: 'KAOYAN_CLOUD_SYNC', timestamp: Date.now(), storage };
 
-                    // 2. 推送
-                    const res = await fetch(`https://api.jsonbin.io/v3/b/${config.jsonbinId}`, {
+                    const res = await fetch(`https://api.jsonbin.io/v3/b/${id}`, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-Master-Key': config.jsonbinKey
+                            'X-Master-Key': key
                         },
                         body: JSON.stringify(backup)
                     });
@@ -1017,14 +1017,17 @@ const ImportExport = ({ setWords, words, setView, config }) => {
             };
 
             const syncFromCloud = async () => {
-                if (!config.jsonbinKey || !config.jsonbinId) { alert("请先去[设置]页面配置 JSONBin 的 Key 和 ID"); return; }
+                const key = config.jsonbinKey ? config.jsonbinKey.trim() : "";
+                const id = config.jsonbinId ? config.jsonbinId.trim() : "";
+
+                if (!key || !id) { alert("请先去[设置]页面配置 JSONBin 的 Key 和 ID"); return; }
                 if (!confirm("⚠️ 警告：下载将覆盖本地当前数据！\n\n确定要从云端拉取数据吗？此操作不可撤销。")) return;
 
                 setIsSyncing(true);
                 try {
-                    const res = await fetch(`https://api.jsonbin.io/v3/b/${config.jsonbinId}/latest`, {
+                    const res = await fetch(`https://api.jsonbin.io/v3/b/${id}/latest`, {
                         method: 'GET',
-                        headers: { 'X-Master-Key': config.jsonbinKey }
+                        headers: { 'X-Master-Key': key }
                     });
 
                     if (!res.ok) throw new Error(`下载失败: ${res.status}`);
@@ -1032,9 +1035,8 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                     const data = json.record;
 
                     if (data && data.storage) {
-                        // 恢复数据
-                        Object.keys(data.storage).forEach(key => {
-                            if(key.startsWith('kaoyan_')) localStorage.setItem(key, data.storage[key]);
+                        Object.keys(data.storage).forEach(k => {
+                            if(k.startsWith('kaoyan_')) localStorage.setItem(k, data.storage[k]);
                         });
                         const dateStr = new Date(data.timestamp).toLocaleString();
                         alert(`✅ 同步成功！\n数据版本: ${dateStr}\n\n页面即将刷新...`);
@@ -1117,11 +1119,12 @@ const ImportExport = ({ setWords, words, setView, config }) => {
             );
         };
 
-      const SettingsPanel = ({ config, setConfig, setView }) => {
+   const SettingsPanel = ({ config, setConfig, setView }) => {
             const [selectedPreset, setSelectedPreset] = useState('deepseek');
             const [modelList, setModelList] = useState([]);
             const [modelSearch, setModelSearch] = useState('');
             const [isFetchingModels, setIsFetchingModels] = useState(false);
+            const [isTestingCloud, setIsTestingCloud] = useState(false);
 
             useEffect(() => {
                 const matchedKey = Object.keys(API_PRESETS).find(key => {
@@ -1138,6 +1141,11 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                 setModelList([]);
             };
 
+            // 自动去除空格的辅助函数
+            const updateConfigTrimmed = (key, value) => {
+                setConfig(prev => ({ ...prev, [key]: value.trim() }));
+            };
+
             const fetchModels = async () => {
                 if (!config.apiKey) { alert("请先填写 API Key"); return; }
                 setIsFetchingModels(true);
@@ -1145,14 +1153,14 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                 try {
                     let fetchedModels = [];
                     if (config.type === 'google') {
-                        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${config.apiKey}`);
+                        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${config.apiKey.trim()}`);
                         if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
                         const data = await res.json();
                         if (data.models) fetchedModels = data.models.map(m => m.name.replace(/^models\//, ''));
                     } else {
                         let baseUrl = config.baseUrl.replace(/\/$/, "");
                         if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel") && !baseUrl.includes("lingyiwanwu") && !baseUrl.includes("siliconflow")) baseUrl += "/v1";
-                        const res = await fetch(`${baseUrl}/models`, { headers: { 'Authorization': `Bearer ${config.apiKey}` } });
+                        const res = await fetch(`${baseUrl}/models`, { headers: { 'Authorization': `Bearer ${config.apiKey.trim()}` } });
                         if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
                         const data = await res.json();
                         if (data.data && Array.isArray(data.data)) fetchedModels = data.data.map(m => m.id);
@@ -1161,6 +1169,32 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                     else alert("未获取到模型列表");
                 } catch (e) { alert(`获取失败: ${e.message}`); } 
                 finally { setIsFetchingModels(false); }
+            };
+
+            const testCloudConnection = async () => {
+                if (!config.jsonbinKey || !config.jsonbinId) { alert("请先填入 Master Key 和 Bin ID"); return; }
+                setIsTestingCloud(true);
+                try {
+                    // 尝试读取 Bin 的元数据
+                    const res = await fetch(`https://api.jsonbin.io/v3/b/${config.jsonbinId.trim()}/latest`, {
+                        method: 'GET',
+                        headers: { 'X-Master-Key': config.jsonbinKey.trim() }
+                    });
+                    
+                    if (res.status === 200) {
+                        alert("✅ 连接成功！\n配置正确，可以正常同步。");
+                    } else if (res.status === 401 || res.status === 403) {
+                        alert("❌ 权限错误 (401/403)\n请检查 Master Key 是否正确。");
+                    } else if (res.status === 404) {
+                        alert("❌ 找不到 Bin (404)\n请检查 Bin ID 是否填错。");
+                    } else {
+                        alert(`❌ 连接失败: HTTP ${res.status}`);
+                    }
+                } catch (e) {
+                    alert("❌ 网络错误: Failed to fetch\n请检查：\n1. 魔法是否开启\n2. 是否为全局模式\n3. Key 中是否含有特殊符号");
+                } finally {
+                    setIsTestingCloud(false);
+                }
             };
 
             const filteredModels = modelList.filter(m => m.toLowerCase().includes(modelSearch.toLowerCase()));
@@ -1184,12 +1218,12 @@ const ImportExport = ({ setWords, words, setView, config }) => {
 
                             <div className={selectedPreset === 'google' ? 'hidden' : 'block'}>
                                 <label className="block text-sm font-bold text-gray-700 mb-2">API Endpoint</label>
-                                <input value={config.baseUrl} onChange={e => setConfig({...config, baseUrl: e.target.value})} className={`w-full border border-gray-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition ${selectedPreset !== 'custom' ? 'bg-gray-100 text-gray-500' : 'bg-gray-50'}`} disabled={selectedPreset !== 'custom'}/>
+                                <input value={config.baseUrl} onChange={e => updateConfigTrimmed('baseUrl', e.target.value)} className={`w-full border border-gray-200 p-3 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition ${selectedPreset !== 'custom' ? 'bg-gray-100 text-gray-500' : 'bg-gray-50'}`} disabled={selectedPreset !== 'custom'}/>
                             </div>
 
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-2">API Key</label>
-                                <input value={config.apiKey} onChange={e => setConfig({...config, apiKey: e.target.value})} type="password" placeholder="sk-..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
+                                <input value={config.apiKey} onChange={e => updateConfigTrimmed('apiKey', e.target.value)} type="password" placeholder="sk-..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
                             </div>
 
                             <div>
@@ -1197,23 +1231,29 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                                     <label className="block text-sm font-bold text-gray-700">模型名称</label>
                                     <button onClick={fetchModels} disabled={isFetchingModels || !config.apiKey} className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg font-medium hover:bg-indigo-100 transition disabled:opacity-50">{isFetchingModels ? "获取中..." : "获取列表"}</button>
                                 </div>
-                                <input value={config.model} onChange={e => setConfig({...config, model: e.target.value})} placeholder="例如: deepseek-chat" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
+                                <input value={config.model} onChange={e => updateConfigTrimmed('model', e.target.value)} placeholder="例如: deepseek-chat" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
                             </div>
                         </div>
 
-                        {/* 2. 云同步设置区域 (新增) */}
+                        {/* 2. 云同步设置区域 (新增测试按钮) */}
                         <div className="space-y-6 pt-2">
-                            <h2 className="text-xl font-bold border-b border-gray-100 pb-2 text-gray-800 flex items-center"><Icon name="CloudDownload" size={22} className="mr-2 text-indigo-600"/> 云同步设置 (JSONBin)</h2>
+                            <div className="flex justify-between items-center border-b border-gray-100 pb-2">
+                                <h2 className="text-xl font-bold text-gray-800 flex items-center"><Icon name="CloudDownload" size={22} className="mr-2 text-indigo-600"/> 云同步设置</h2>
+                                <button onClick={testCloudConnection} disabled={isTestingCloud} className="text-xs bg-green-50 text-green-700 px-3 py-1.5 rounded-lg font-bold hover:bg-green-100 transition flex items-center">
+                                    {isTestingCloud ? <span className="animate-spin mr-1">⏳</span> : <span className="mr-1">🔗</span>} 测试连接
+                                </button>
+                            </div>
+                            
                             <div className="bg-indigo-50 p-3 rounded-lg text-xs text-indigo-800 leading-relaxed">
-                                这是一个免费的云存储服务。注册 JSONBin.io 后填入信息，即可实现多端同步。
+                                请填入 JSONBin.io 的信息。代码已自动开启防误触保护（自动去除首尾空格）。
                             </div>
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-2">Master Key (X-Master-Key)</label>
-                                <input value={config.jsonbinKey || ''} onChange={e => setConfig({...config, jsonbinKey: e.target.value})} type="password" placeholder="$2b$10..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
+                                <input value={config.jsonbinKey || ''} onChange={e => updateConfigTrimmed('jsonbinKey', e.target.value)} type="password" placeholder="$2b$10..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
                             </div>
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-2">Bin ID</label>
-                                <input value={config.jsonbinId || ''} onChange={e => setConfig({...config, jsonbinId: e.target.value})} placeholder="656..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
+                                <input value={config.jsonbinId || ''} onChange={e => updateConfigTrimmed('jsonbinId', e.target.value)} placeholder="656..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"/>
                             </div>
                         </div>
 
@@ -1231,7 +1271,6 @@ const ImportExport = ({ setWords, words, setView, config }) => {
                 </div>
             );
         };
-
         const App = () => {
             const [view, setView] = useState('home');
             const [words, setWords] = useState([]);
