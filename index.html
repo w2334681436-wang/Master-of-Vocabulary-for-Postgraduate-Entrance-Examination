@@ -682,27 +682,27 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 }
             };
 
-            if (queue.length === 0 && !isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full"><div className="bg-green-100 p-6 rounded-full mb-6 text-green-600"><Icon name="Check" size={48}/></div><h2 className="text-2xl font-bold text-gray-800 mb-2">当前任务完成</h2><p className="text-gray-500 mb-8">休息一下，稍后再来！</p><button onClick={onExit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95">返回首页</button></div></div>;
-            if (isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full"><div className="bg-indigo-100 p-6 rounded-full mb-6 text-indigo-600"><Icon name="Sparkles" size={48}/></div><h2 className="text-2xl font-bold text-gray-800 mb-4">本轮学习结束 🎉</h2><button onClick={onExit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95">返回</button></div></div>;
-
+            // 🔥 修复点：先定义 currentCard
             const currentCard = queue[currentIdx];
-            
-            // 🔥 核心逻辑：按词性 (pos) 对释义进行分组
+
+            // 🔥 修复点：useMemo 必须放在所有 return 之前！
             const groupedMeanings = useMemo(() => {
                 if (!currentCard || !currentCard.meanings) return [];
                 const groups = [];
                 currentCard.meanings.forEach((m, idx) => {
                     const lastGroup = groups[groups.length - 1];
-                    // 如果当前释义的词性和上一组一样，就加进去
                     if (lastGroup && lastGroup.pos === m.pos) {
                         lastGroup.items.push({ ...m, originalIdx: idx });
                     } else {
-                        // 否则新开一组
                         groups.push({ pos: m.pos, items: [{ ...m, originalIdx: idx }] });
                     }
                 });
                 return groups;
             }, [currentCard]);
+
+            // 🔥 修复点：Early Return (提前返回) 必须放在 Hooks 之后
+            if (queue.length === 0 && !isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full"><div className="bg-green-100 p-6 rounded-full mb-6 text-green-600"><Icon name="Check" size={48}/></div><h2 className="text-2xl font-bold text-gray-800 mb-2">当前任务完成</h2><p className="text-gray-500 mb-8">休息一下，稍后再来！</p><button onClick={onExit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95">返回首页</button></div></div>;
+            if (isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full"><div className="bg-indigo-100 p-6 rounded-full mb-6 text-indigo-600"><Icon name="Sparkles" size={48}/></div><h2 className="text-2xl font-bold text-gray-800 mb-4">本轮学习结束 🎉</h2><button onClick={onExit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95">返回</button></div></div>;
 
             const handleRating = (rating) => {
                 const word = currentCard;
@@ -774,7 +774,7 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                                         <button onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}} className="p-3 bg-indigo-50 rounded-full text-indigo-600 hover:bg-indigo-100 transition"><Icon name="Volume2" size={24}/></button>
                                     </div>
                                     <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 space-y-4 md:space-y-6">
-                                        {/* 🔥 核心修改：渲染分组后的释义 */}
+                                        {/* 渲染分组后的释义 */}
                                         {groupedMeanings.map((group, gIdx) => (
                                             <div key={gIdx} className="relative bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
                                                 {/* 词性头标：放在左上角 */}
