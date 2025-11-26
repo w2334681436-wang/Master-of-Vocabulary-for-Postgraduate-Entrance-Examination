@@ -33,14 +33,12 @@
         .safe-top { padding-top: env(safe-area-inset-top); }
         .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
         
-        /* Markdown 样式优化 */
         .markdown-body p { margin-bottom: 0.5em; }
         .markdown-body strong { color: inherit; font-weight: 700; }
         .markdown-body ul { list-style-type: disc; padding-left: 1.2em; margin-bottom: 0.5em; }
         .markdown-body ol { list-style-type: decimal; padding-left: 1.2em; margin-bottom: 0.5em; }
         .markdown-body code { background-color: rgba(0,0,0,0.05); padding: 0.1em 0.3em; border-radius: 3px; font-family: monospace; }
         
-        /* 动画定义 */
         @keyframes slide-up { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .animate-slide-up { animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
         @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -57,7 +55,6 @@
     </div>
 
     <script>
-        // 错误捕获，防止白屏
         window.onerror = function(msg, url, line, col, error) {
             var root = document.getElementById('root');
             root.innerHTML = '<div style="padding:20px;text-align:center;color:red;"><h3>发生错误</h3><p>'+msg+'</p><p>Line: '+line+'</p></div>';
@@ -72,12 +69,9 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
-        // --- Icons (修复版：使用 flex 居中，去除 inline-block 导致的对齐问题) ---
         const Icons = {
             Book: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>,
             CloudCheck: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 15l2 2 4-4"/><path d="M19 17a5 5 0 0 0 0-10c-5.523 0-10 4.477-10 10"/></svg>,
-            CloudUpload: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/><path d="M19 17a5 5 0 0 0 0-10c-5.523 0-10 4.477-10 10"/></svg>,
-            CloudOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 7h1.8a5 5 0 0 0 .68 9.08"/><line x1="2" y1="2" x2="22" y2="22"/></svg>,
             Brain: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>,
             List: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>,
             Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>,
@@ -87,30 +81,25 @@
             Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
             Trash2: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>,
             ArrowLeft: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>,
-            Maximize: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>,
-            Minimize: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>,
             CloudDownload: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></svg>,
             X: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
             Folder: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>,
-            FolderInput: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 2H4a2 2 0 0 0-2 2Z"/><path d="m10 13 2 2 4-4"/></svg>,
             Move: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3"/></svg>,
             Edit: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
             MessageCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>,
             Send: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
-            Zap: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
-            BookOpen: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
             Palette: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>,
-            Refresh: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg>,
             Search: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
             Volume2: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>,
             Eye: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
             EyeOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>,
-            Sparkles: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+            Sparkles: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>,
+            Copy: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
+            ClipboardCheck: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="m9 14 2 2 4-4"/></svg>
         };
 
         const Icon = ({ name, size = 20, className = "" }) => {
             const Svg = Icons[name] || Icons.Book;
-            // 修复：使用 flex 布局确保 SVG 在容器内绝对居中，去除 inline-block 带来的垂直对齐问题
             return <span className={`flex justify-center items-center ${className}`} style={{ width: size, height: size }}><Svg /></span>;
         };
 
@@ -162,7 +151,6 @@
             }
         };
 
-        // --- Word Chat Component (AI 老师) ---
         const WordChat = ({ word, onClose, config }) => {
             const [messages, setMessages] = useState([]);
             const [input, setInput] = useState("");
@@ -290,19 +278,10 @@
                 </div>
             );
         };
+
         // --- Components ---
 
-        const Navbar = ({ view, setView, syncStatus }) => {
-            const getStatusIcon = () => {
-                switch(syncStatus) {
-                    case 'syncing': return <span className="animate-spin text-white"><Icon name="Refresh" size={16}/></span>;
-                    case 'success': return <span className="text-green-300"><Icon name="CloudCheck" size={18}/></span>;
-                    case 'error': return <span className="text-red-300"><Icon name="CloudOff" size={18}/></span>;
-                    case 'pending': return <span className="text-yellow-300 animate-pulse"><Icon name="CloudUpload" size={18}/></span>;
-                    default: return null;
-                }
-            };
-
+        const Navbar = ({ view, setView }) => {
             return (
                 <nav className="bg-indigo-600 text-white shadow-md sticky top-0 z-50 safe-top transition-all duration-300 flex-shrink-0">
                     <div className="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
@@ -311,12 +290,6 @@
                                 <Icon name="Book" size={24}/>
                                 <span className="tracking-wide hidden sm:inline">考研词汇大师</span>
                             </div>
-                            {/* 状态灯 */}
-                            {syncStatus && syncStatus !== 'idle' && (
-                                <div className="ml-2 p-1.5 bg-indigo-800/50 rounded-full flex items-center justify-center border border-indigo-500/30" title="云同步状态">
-                                    {getStatusIcon()}
-                                </div>
-                            )}
                         </div>
                         <div className="flex space-x-1 items-center">
                             <button onClick={() => setView('home')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'home' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Brain" /></button>
@@ -425,12 +398,13 @@
             return (
                 <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 bg-gray-50">
                     <div className="max-w-5xl mx-auto space-y-8 pb-10">
-                        {/* 智能复习卡片 - 脑图图标已修复居中问题 */}
+                        {/* 智能复习卡片 - 图标已修复居中 */}
                         <div onClick={startReview} className="w-full bg-gradient-to-br from-indigo-600 to-violet-600 p-8 rounded-2xl text-white shadow-xl shadow-indigo-200 cursor-pointer transform transition hover:-translate-y-1 hover:shadow-2xl active:scale-[0.99] relative overflow-hidden flex flex-col md:flex-row justify-between items-center group">
                             <div className="z-10 relative text-center md:text-left">
                                 <h2 className="text-3xl font-bold mb-2 tracking-tight">智能复习计划</h2>
                                 <p className="text-indigo-100 text-lg opacity-90">今日待复习: <span className="font-bold text-white bg-white/20 px-3 py-0.5 rounded-lg ml-1">{stats.review}</span> 个单词</p>
                             </div>
+                            {/* 这里使用 flex items-center justify-center 确保图标居中 */}
                             <div className="mt-4 md:mt-0 bg-white/20 w-20 h-20 rounded-full flex items-center justify-center z-10 relative group-hover:scale-110 transition duration-300 backdrop-blur-sm border border-white/30">
                                 <Icon name="Brain" size={40} className="text-white"/>
                             </div>
@@ -490,36 +464,15 @@
                         const start = i * groupSize; const end = Math.min((i+1) * groupSize, batchWords.length);
                         const groupWords = batchWords.slice(start, end);
                         const mastered = groupWords.filter(w => w.stats && w.stats.interval > 0).length;
-                        
                         const meta = groupMeta[batchId] || {};
                         let batchName = meta.name;
-                        
                         if (!batchName) {
                             if (batchId !== 'default') { 
                                 const ts = parseInt(batchId.split('-')[1]); 
-                                if (!isNaN(ts)) { 
-                                    const date = new Date(ts); 
-                                    batchName = `${date.getFullYear()}/${date.getMonth()+1}/${date.getDate()} 导入`; 
-                                } else { 
-                                    batchName = "新批次"; 
-                                } 
-                            } else {
-                                batchName = "默认词库";
-                            }
+                                if (!isNaN(ts)) { const date = new Date(ts); batchName = `${date.getFullYear()}/${date.getMonth()+1}/${date.getDate()} 导入`; } else { batchName = "新批次"; } 
+                            } else { batchName = "默认词库"; }
                         }
-
-                        result.push({ 
-                            index: globalIndex++, 
-                            batchId, 
-                            batchIndex: i, 
-                            batchName, 
-                            desc: meta.desc || "", 
-                            start: start + 1, 
-                            end, 
-                            total: groupWords.length, 
-                            mastered, 
-                            words: groupWords 
-                        });
+                        result.push({ index: globalIndex++, batchId, batchIndex: i, batchName, desc: meta.desc || "", start: start + 1, end, total: groupWords.length, mastered, words: groupWords });
                     }
                 });
                 return result;
@@ -538,12 +491,7 @@
                 }
             };
 
-            const openMoveModal = (e, groupWords) => {
-                e.stopPropagation();
-                setMoveModal({ open: true, targetGroupWords: groupWords });
-                setCustomTarget('');
-            };
-
+            const openMoveModal = (e, groupWords) => { e.stopPropagation(); setMoveModal({ open: true, targetGroupWords: groupWords }); setCustomTarget(''); };
             const performMove = (targetCat) => {
                 if(!targetCat) return;
                 const idsToMove = moveModal.targetGroupWords.map(w => w.id);
@@ -557,22 +505,11 @@
             const openEditModal = (e, batchId, currentName, currentDesc) => {
                 e.stopPropagation();
                 const isDefaultName = currentName.includes("导入") || currentName === "默认词库" || currentName === "新批次";
-                setEditModal({ 
-                    open: true, 
-                    batchId, 
-                    currentName: isDefaultName ? '' : currentName, 
-                    currentDesc: currentDesc || ''
-                });
+                setEditModal({ open: true, batchId, currentName: isDefaultName ? '' : currentName, currentDesc: currentDesc || '' });
             };
 
             const saveGroupInfo = () => {
-                const newMeta = { 
-                    ...groupMeta, 
-                    [editModal.batchId]: { 
-                        name: editModal.currentName.trim(), 
-                        desc: editModal.currentDesc.trim() 
-                    } 
-                };
+                const newMeta = { ...groupMeta, [editModal.batchId]: { name: editModal.currentName.trim(), desc: editModal.currentDesc.trim() } };
                 setGroupMeta(newMeta);
                 localStorage.setItem('kaoyan_group_meta', JSON.stringify(newMeta));
                 setEditModal({ open: false, batchId: '', currentName: '', currentDesc: '' });
@@ -586,10 +523,7 @@
                             <span className="ml-3 text-sm text-gray-500 bg-gray-200 px-2 py-0.5 rounded-md">分组管理</span>
                         </div>
                         {groups.length === 0 ? 
-                            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl shadow-sm border border-gray-100">
-                                <div className="text-gray-300 mb-4"><Icon name="Book" size={48}/></div>
-                                <div className="text-gray-500">该分类下暂无单词</div>
-                            </div> 
+                            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl shadow-sm border border-gray-100"><div className="text-gray-300 mb-4"><Icon name="Book" size={48}/></div><div className="text-gray-500">该分类下暂无单词</div></div> 
                         : 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                             {groups.map(g => (
@@ -597,9 +531,7 @@
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex-1 pr-2">
                                             <h3 className="font-bold text-gray-800 text-lg line-clamp-1" title={g.batchName}>{g.batchName}</h3>
-                                            <div className="flex items-center mt-1 space-x-2">
-                                                 <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200">Group {g.index}</span>
-                                            </div>
+                                            <div className="flex items-center mt-1 space-x-2"><span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200">Group {g.index}</span></div>
                                         </div>
                                         <div className="flex space-x-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                             <button onClick={(e) => openEditModal(e, g.batchId, g.batchName, g.desc)} className="p-1.5 bg-gray-50 text-gray-600 rounded hover:bg-indigo-50 hover:text-indigo-600 transition" title="编辑信息"><Icon name="Edit" size={16}/></button>
@@ -607,23 +539,10 @@
                                             <button onClick={(e) => handleDeleteGroup(e, g.words)} className="p-1.5 bg-red-50 text-red-500 rounded hover:bg-red-100 transition" title="删除分组"><Icon name="Trash2" size={16}/></button>
                                         </div>
                                     </div>
-                                    
-                                    <div className="mb-3 flex-1">
-                                        {g.desc ? (
-                                            <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded border border-gray-100 line-clamp-2">{g.desc}</p>
-                                        ) : (
-                                            <p className="text-xs text-gray-300 italic py-2">暂无备注...</p>
-                                        )}
-                                    </div>
-
+                                    <div className="mb-3 flex-1">{g.desc ? (<p className="text-xs text-gray-500 bg-gray-50 p-2 rounded border border-gray-100 line-clamp-2">{g.desc}</p>) : (<p className="text-xs text-gray-300 italic py-2">暂无备注...</p>)}</div>
                                     <div className="mt-auto">
-                                        <div className="flex justify-between text-xs text-gray-500 mb-1">
-                                            <span>进度</span>
-                                            <span className="font-medium">{Math.round((g.mastered/g.total)*100)}%</span>
-                                        </div>
-                                        <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                                            <div className="h-full bg-indigo-500 transition-all duration-500" style={{width: `${(g.mastered/g.total)*100}%`}}></div>
-                                        </div>
+                                        <div className="flex justify-between text-xs text-gray-500 mb-1"><span>进度</span><span className="font-medium">{Math.round((g.mastered/g.total)*100)}%</span></div>
+                                        <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-500" style={{width: `${(g.mastered/g.total)*100}%`}}></div></div>
                                         <p className="text-xs text-gray-400 mt-2 text-right">{g.mastered} / {g.total} 词</p>
                                     </div>
                                 </div>
@@ -631,44 +550,23 @@
                         </div>
                         }
                     </div>
-
                     {moveModal.open && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setMoveModal({open:false, targetGroupWords:[]})}>
                             <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
                                 <h3 className="text-xl font-bold mb-4 text-gray-800">转移该组单词到...</h3>
-                                <div className="grid grid-cols-2 gap-3 mb-4">
-                                    {['high', 'medium', 'low', 'zero'].map(cat => (
-                                        <button key={cat} onClick={() => performMove(cat)} className="py-3 bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 rounded-xl font-bold text-gray-700 hover:text-indigo-700 transition uppercase">{cat}</button>
-                                    ))}
-                                </div>
-                                <div className="border-t border-gray-100 pt-4 mt-2">
-                                    <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">自定义分组</label>
-                                    <div className="flex space-x-2">
-                                        <input type="text" value={customTarget} onChange={e => setCustomTarget(e.target.value)} placeholder="输入分组名..." className="flex-1 p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"/>
-                                        <button onClick={() => performMove(customTarget)} disabled={!customTarget.trim()} className="px-4 bg-indigo-600 text-white rounded-xl font-bold disabled:opacity-50">确定</button>
-                                    </div>
-                                </div>
+                                <div className="grid grid-cols-2 gap-3 mb-4">{['high', 'medium', 'low', 'zero'].map(cat => (<button key={cat} onClick={() => performMove(cat)} className="py-3 bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 rounded-xl font-bold text-gray-700 hover:text-indigo-700 transition uppercase">{cat}</button>))}</div>
+                                <div className="border-t border-gray-100 pt-4 mt-2"><label className="text-xs font-bold text-gray-400 uppercase mb-2 block">自定义分组</label><div className="flex space-x-2"><input type="text" value={customTarget} onChange={e => setCustomTarget(e.target.value)} placeholder="输入分组名..." className="flex-1 p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"/><button onClick={() => performMove(customTarget)} disabled={!customTarget.trim()} className="px-4 bg-indigo-600 text-white rounded-xl font-bold disabled:opacity-50">确定</button></div></div>
                                 <button onClick={() => setMoveModal({open:false, targetGroupWords:[]})} className="mt-6 w-full py-3 text-gray-500 hover:bg-gray-50 rounded-xl font-medium">取消</button>
                             </div>
                         </div>
                     )}
-
                     {editModal.open && (
                         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setEditModal({...editModal, open:false})}>
                             <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
                                 <h3 className="text-xl font-bold mb-4 text-gray-800">编辑分组信息</h3>
-                                <div className="mb-4">
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">分组名称</label>
-                                    <input type="text" value={editModal.currentName} onChange={e => setEditModal({...editModal, currentName: e.target.value})} placeholder="例如: 2010年真题阅读A" className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" autoFocus />
-                                </div>
-                                <div className="mb-6">
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">备注 / 简介</label>
-                                    <textarea value={editModal.currentDesc} onChange={e => setEditModal({...editModal, currentDesc: e.target.value})} placeholder="例如: 这部分单词比较难，需要多复习几次..." className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none"></textarea>
-                                </div>
-                                <div className="flex space-x-3">
-                                    <button onClick={() => setEditModal({...editModal, open:false})} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">取消</button>
-                                    <button onClick={saveGroupInfo} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition">保存</button>
-                                </div>
+                                <div className="mb-4"><label className="block text-xs font-bold text-gray-500 uppercase mb-1">分组名称</label><input type="text" value={editModal.currentName} onChange={e => setEditModal({...editModal, currentName: e.target.value})} placeholder="例如: 2010年真题阅读A" className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" autoFocus /></div>
+                                <div className="mb-6"><label className="block text-xs font-bold text-gray-500 uppercase mb-1">备注 / 简介</label><textarea value={editModal.currentDesc} onChange={e => setEditModal({...editModal, currentDesc: e.target.value})} placeholder="例如: 这部分单词比较难，需要多复习几次..." className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none"></textarea></div>
+                                <div className="flex space-x-3"><button onClick={() => setEditModal({...editModal, open:false})} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">取消</button><button onClick={saveGroupInfo} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition">保存</button></div>
                             </div>
                         </div>
                     )}
@@ -737,71 +635,36 @@
 
             return (
                 <div className="flex-1 flex flex-col relative bg-gray-100 overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1.5 bg-gray-200 z-10">
-                        <div className="h-full bg-indigo-600 transition-all duration-300 ease-out" style={{width: `${(currentIdx / queue.length) * 100}%`}}></div>
-                    </div>
-                    
+                    <div className="absolute top-0 left-0 w-full h-1.5 bg-gray-200 z-10"><div className="h-full bg-indigo-600 transition-all duration-300 ease-out" style={{width: `${(currentIdx / queue.length) * 100}%`}}></div></div>
                     <button onClick={onExit} className="absolute top-4 left-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title="退出"><Icon name="ArrowLeft" size={24}/></button>
-                    
                     <button onClick={(e)=>{e.stopPropagation(); setChatSession(currentCard.word);}} className="absolute top-4 right-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-indigo-500 hover:text-white hover:bg-indigo-500 transition" title="AI 详解"><Icon name="MessageCircle" size={24}/></button>
-
                     <div className="flex-1 flex items-center justify-center p-4 md:p-8 overflow-hidden">
                         <div className="relative scene w-full max-w-sm md:max-w-3xl aspect-[3/4] md:aspect-[4/3] max-h-[85vh]">
                             <div className={`card-object ${isFlipped ? 'is-flipped' : ''}`} onClick={() => setIsFlipped(!isFlipped)}>
                                 <div className="card-face flex flex-col items-center justify-center p-8 md:p-12 text-center bg-gradient-to-br from-white to-gray-50 border border-white">
                                     <div className="flex-1 flex flex-col items-center justify-center w-full">
                                         <h1 className="text-5xl md:text-7xl lg:text-8xl font-black text-gray-800 mb-6 md:mb-10 tracking-tight">{currentCard.word}</h1>
-                                        <div 
-                                            className="flex items-center space-x-3 text-gray-500 bg-white border border-gray-200 shadow-sm px-5 py-2.5 rounded-full cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition transform hover:scale-105" 
-                                            onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}}
-                                        >
-                                            <Icon name="Volume2" size={24} className="md:w-7 md:h-7"/>
-                                            <span className="font-mono text-xl md:text-2xl">{currentCard.phonetic}</span>
+                                        <div className="flex items-center space-x-3 text-gray-500 bg-white border border-gray-200 shadow-sm px-5 py-2.5 rounded-full cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition transform hover:scale-105" onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}}>
+                                            <Icon name="Volume2" size={24} className="md:w-7 md:h-7"/><span className="font-mono text-xl md:text-2xl">{currentCard.phonetic}</span>
                                         </div>
                                     </div>
                                     <div className="mt-auto text-gray-400 text-sm md:text-base animate-pulse font-medium">点击翻转查看释义</div>
                                 </div>
-
                                 <div className="card-face card-face-back p-0 bg-white">
-                                    <div className="flex-shrink-0 bg-white/95 backdrop-blur border-b border-gray-100 p-4 md:p-6 flex justify-between items-center z-10 shadow-sm">
-                                        <h2 className="text-2xl md:text-4xl font-bold text-indigo-900">{currentCard.word}</h2>
-                                        <button onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}} className="p-3 bg-indigo-50 rounded-full text-indigo-600 hover:bg-indigo-100 transition"><Icon name="Volume2" size={24}/></button>
-                                    </div>
-                                    
+                                    <div className="flex-shrink-0 bg-white/95 backdrop-blur border-b border-gray-100 p-4 md:p-6 flex justify-between items-center z-10 shadow-sm"><h2 className="text-2xl md:text-4xl font-bold text-indigo-900">{currentCard.word}</h2><button onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}} className="p-3 bg-indigo-50 rounded-full text-indigo-600 hover:bg-indigo-100 transition"><Icon name="Volume2" size={24}/></button></div>
                                     <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 space-y-4 md:space-y-6">
                                         {currentCard.meanings.map((m, idx) => {
                                             const isHidden = m.isMastered && !m._forceShow;
                                             return (
                                                 <div key={idx} className="relative p-5 md:p-6 bg-white rounded-2xl border border-gray-100 shadow-sm transition-all hover:shadow-md hover:border-indigo-100">
-                                                    <div className="flex justify-between items-center mb-3">
-                                                        <span className="text-xs md:text-sm font-bold bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-md uppercase tracking-wide">{m.pos}</span>
-                                                        <button onClick={(e) => toggleMeaningMastery(e, idx)} className={`p-2 rounded-lg transition active:scale-95 ${m.isMastered ? 'text-gray-400 bg-gray-100' : 'text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50'}`}>{m.isMastered ? <Icon name="EyeOff" size={20} /> : <Icon name="Eye" size={20} />}</button>
-                                                    </div>
-                                                    <div className="mb-3 min-h-[1.5rem]">
-                                                        {isHidden ? (
-                                                            <div onClick={(e) => { e.stopPropagation(); toggleForceShow(idx); }} className="bg-gray-50 text-gray-400 text-sm py-4 px-4 rounded-xl cursor-pointer flex items-center justify-center select-none hover:bg-gray-100 transition border border-dashed border-gray-200">
-                                                                <Icon name="EyeOff" size={16} className="mr-2"/> 释义已隐藏 (点击查看)
-                                                            </div>
-                                                        ) : (
-                                                            <div className="text-gray-800 font-medium text-lg md:text-2xl leading-relaxed">{m.def}</div>
-                                                        )}
-                                                    </div>
-                                                    <div className="mt-4 pt-3 border-t border-gray-50">
-                                                        {m.sentence ? 
-                                                            <p className="text-sm md:text-lg text-gray-600 italic bg-gray-50 p-3 rounded-lg border-l-4 border-indigo-200">"{m.sentence}"</p> 
-                                                            : 
-                                                            <button onClick={(e) => generateSentence(e, idx)} className="group flex items-center gap-2 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-all active:scale-95 w-fit">
-                                                                <Icon name="Sparkles" size={16} />
-                                                                <span className="text-xs md:text-sm font-bold whitespace-nowrap">AI 生成例句</span>
-                                                            </button>
-                                                        }
-                                                    </div>
+                                                    <div className="flex justify-between items-center mb-3"><span className="text-xs md:text-sm font-bold bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-md uppercase tracking-wide">{m.pos}</span><button onClick={(e) => toggleMeaningMastery(e, idx)} className={`p-2 rounded-lg transition active:scale-95 ${m.isMastered ? 'text-gray-400 bg-gray-100' : 'text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50'}`}>{m.isMastered ? <Icon name="EyeOff" size={20} /> : <Icon name="Eye" size={20} />}</button></div>
+                                                    <div className="mb-3 min-h-[1.5rem]">{isHidden ? (<div onClick={(e) => { e.stopPropagation(); toggleForceShow(idx); }} className="bg-gray-50 text-gray-400 text-sm py-4 px-4 rounded-xl cursor-pointer flex items-center justify-center select-none hover:bg-gray-100 transition border border-dashed border-gray-200"><Icon name="EyeOff" size={16} className="mr-2"/> 释义已隐藏 (点击查看)</div>) : (<div className="text-gray-800 font-medium text-lg md:text-2xl leading-relaxed">{m.def}</div>)}</div>
+                                                    <div className="mt-4 pt-3 border-t border-gray-50">{m.sentence ? <p className="text-sm md:text-lg text-gray-600 italic bg-gray-50 p-3 rounded-lg border-l-4 border-indigo-200">"{m.sentence}"</p> : <button onClick={(e) => generateSentence(e, idx)} className="group flex items-center gap-2 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-all active:scale-95 w-fit"><Icon name="Sparkles" size={16} /><span className="text-xs md:text-sm font-bold whitespace-nowrap">AI 生成例句</span></button>}</div>
                                                 </div>
                                             );
                                         })}
                                         <div className="h-20"></div> 
                                     </div>
-
                                     <div className="flex-shrink-0 absolute bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 md:p-6 flex space-x-3 md:space-x-6 shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.1)] z-20">
                                         <button onClick={(e)=>{e.stopPropagation();handleRating(1);}} className="flex-1 btn-press bg-red-50 hover:bg-red-100 text-red-600 py-4 md:py-5 rounded-xl font-bold text-base md:text-lg flex flex-col items-center transition-colors border border-red-100"><span>不认识</span></button>
                                         <button onClick={(e)=>{e.stopPropagation();handleRating(2);}} className="flex-1 btn-press bg-yellow-50 hover:bg-yellow-100 text-yellow-600 py-4 md:py-5 rounded-xl font-bold text-base md:text-lg flex flex-col items-center transition-colors border border-yellow-100"><span>不熟</span></button>
@@ -827,20 +690,9 @@
             const [aiInput, setAiInput] = useState('');
             const [isFetching, setIsFetching] = useState(false);
             const [fetchProgress, setFetchProgress] = useState({ current: 0, total: 0, success: 0, fail: 0 });
-            const [isSyncing, setIsSyncing] = useState(false);
 
             const getTargetCategory = () => { if (importMode === 'frequency') return importCategory; return customGroupName.trim() || `Import ${new Date().toLocaleDateString()}`; };
-            
-            const saveBatchMeta = (batchId) => {
-                if (isNewBatch && importBatchName.trim()) {
-                    try {
-                        const metaStr = localStorage.getItem('kaoyan_group_meta');
-                        const meta = metaStr ? JSON.parse(metaStr) : {};
-                        meta[batchId] = { name: importBatchName.trim(), desc: "" };
-                        localStorage.setItem('kaoyan_group_meta', JSON.stringify(meta));
-                    } catch (e) { console.error(e); }
-                }
-            };
+            const saveBatchMeta = (batchId) => { if (isNewBatch && importBatchName.trim()) { try { const metaStr = localStorage.getItem('kaoyan_group_meta'); const meta = metaStr ? JSON.parse(metaStr) : {}; meta[batchId] = { name: importBatchName.trim(), desc: "" }; localStorage.setItem('kaoyan_group_meta', JSON.stringify(meta)); } catch (e) { console.error(e); } } };
 
             const parseMultiPos = (rawWord, fullText) => {
                 let remains = fullText.substring(rawWord.length).trim();
@@ -848,13 +700,8 @@
                 const meanings = [];
                 for (let i = 0; i < parts.length; i++) {
                     const part = parts[i];
-                    if (part.match(/^[a-z]{1,5}\.$/)) {
-                        const def = parts[i+1] || "";
-                        meanings.push({ pos: part, def: def.trim(), sentence: "", isMastered: false });
-                        i++;
-                    } else {
-                        if(i === 0) meanings.push({ pos: "mix.", def: part.trim(), sentence: "", isMastered: false });
-                    }
+                    if (part.match(/^[a-z]{1,5}\.$/)) { const def = parts[i+1] || ""; meanings.push({ pos: part, def: def.trim(), sentence: "", isMastered: false }); i++; } 
+                    else if(i === 0) meanings.push({ pos: "mix.", def: part.trim(), sentence: "", isMastered: false });
                 }
                 return meanings;
             };
@@ -862,26 +709,17 @@
             const parseAndImport = () => { 
                 if(!textInput.trim()) return;
                 const targetCat = getTargetCategory(); const segments = textInput.split(/[;\n]+/);
-                let addedCount = 0, mergedCount = 0; let currentWords = JSON.parse(JSON.stringify(words)); let lastWordId = null; 
-                const batchId = isNewBatch ? `batch-${Date.now()}` : 'default';
-                saveBatchMeta(batchId);
+                let addedCount = 0, mergedCount = 0; let currentWords = JSON.parse(JSON.stringify(words)); 
+                const batchId = isNewBatch ? `batch-${Date.now()}` : 'default'; saveBatchMeta(batchId);
                 segments.forEach((seg, idx) => {
                     seg = seg.trim(); if (!seg) return;
                     const matchHead = seg.match(/^([a-zA-Z\-\s]+?)\s+/);
                     if (matchHead) {
-                        const rawWord = matchHead[1].trim();
-                        const parsedMeanings = parseMultiPos(rawWord, seg);
+                        const rawWord = matchHead[1].trim(); const parsedMeanings = parseMultiPos(rawWord, seg);
                         if (parsedMeanings.length > 0) {
                             const existingIdx = currentWords.findIndex(w => w.word.toLowerCase() === rawWord.toLowerCase());
-                            if (!isNewBatch && existingIdx !== -1) { 
-                                const existingWord = currentWords[existingIdx]; lastWordId = existingWord.id; 
-                                parsedMeanings.forEach(nm => { if (!existingWord.meanings.some(om => om.pos === nm.pos && om.def === nm.def)) existingWord.meanings.push(nm); });
-                                mergedCount++; 
-                            } else { 
-                                const newId = `auto-${Date.now()}-${idx}-${Math.random().toString(36).substr(2,5)}`; 
-                                currentWords.push({ id: newId, word: rawWord, phonetic: "", category: targetCat, importId: batchId, meanings: parsedMeanings, stats: { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 } }); 
-                                lastWordId = newId; addedCount++; 
-                            }
+                            if (!isNewBatch && existingIdx !== -1) { const existingWord = currentWords[existingIdx]; parsedMeanings.forEach(nm => { if (!existingWord.meanings.some(om => om.pos === nm.pos && om.def === nm.def)) existingWord.meanings.push(nm); }); mergedCount++; } 
+                            else { currentWords.push({ id: `auto-${Date.now()}-${idx}`, word: rawWord, phonetic: "", category: targetCat, importId: batchId, meanings: parsedMeanings, stats: { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 } }); addedCount++; }
                         }
                     }
                 });
@@ -919,104 +757,12 @@
 
             const handleFile = (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { try { const content = JSON.parse(ev.target.result); if (content.type === 'KAOYAN_FULL_BACKUP' && content.storage) { if(confirm(`恢复备份将覆盖当前数据，确定吗？`)) { Object.keys(content.storage).forEach(key => { if(key.startsWith('kaoyan_')) localStorage.setItem(key, content.storage[key]); }); window.location.reload(); } return; } if (Array.isArray(content)) { if(confirm(`导入旧版单词表?`)) { setWords(content); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(content)); alert("完成"); } return; } } catch(err) { alert("错误"); } }; reader.readAsText(file); };
             const exportFullData = async () => { 
-                const storage = {}; 
-                for(let i=0; i<localStorage.length; i++) { const key = localStorage.key(i); if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key); } 
+                const storage = {}; for(let i=0; i<localStorage.length; i++) { const key = localStorage.key(i); if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key); } 
                 const backup = { type: 'KAOYAN_FULL_BACKUP', version: 1.0, timestamp: Date.now(), storage };
-                const date = new Date();
-                const fileName = `考研备份_${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate()}.json`;
-                
-                try {
-                    const file = new File([JSON.stringify(backup, null, 2)], fileName, {type: "application/json"});
-                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                        await navigator.share({ files: [file], title: '考研词汇备份', text: '进度备份' });
-                        return;
-                    }
-                } catch (err) { console.log("分享失败，转下载"); }
-
+                const date = new Date(); const fileName = `考研备份_${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate()}.json`;
                 const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"}); 
                 const url = URL.createObjectURL(blob); 
                 const a = document.createElement('a'); a.href = url; a.download = fileName; a.click(); 
-            };
-
-            // --- Gitee 同步逻辑 (已修复：自动检测是否存在，智能切换 POST/PUT) ---
-            const toBase64 = (str) => window.btoa(unescape(encodeURIComponent(str)));
-            const fromBase64 = (str) => decodeURIComponent(escape(window.atob(str)));
-            const FILE_PATH = "backup.json";
-
-            const syncToGitee = async () => {
-                if (!config.giteeToken || !config.giteeOwner || !config.giteeRepo) { alert("请先去[设置]配置 Gitee 信息"); return; }
-                if (!confirm("⚠️ 确定上传并覆盖云端数据吗？")) return;
-                setIsSyncing(true);
-                try {
-                    // 1. 尝试获取文件信息 (检查是否存在)
-                    const checkUrl = `https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}?access_token=${config.giteeToken}`;
-                    const checkRes = await fetch(checkUrl);
-                    
-                    let sha = "";
-                    let method = "POST"; // 默认新建
-
-                    if (checkRes.ok) {
-                        const fileData = await checkRes.json();
-                        sha = fileData.sha;
-                        method = "PUT"; // 存在则更新
-                    } else if (checkRes.status === 404) {
-                        method = "POST"; // 不存在则新建
-                    } else {
-                        throw new Error(`检查仓库失败: ${checkRes.status}`);
-                    }
-
-                    // 2. 打包数据
-                    const storage = {};
-                    for(let i=0; i<localStorage.length; i++) {
-                        const key = localStorage.key(i);
-                        if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key);
-                    }
-                    const rawData = JSON.stringify({ type: 'GITEE_SYNC', timestamp: Date.now(), storage });
-                    const compressed = LZString.compressToUTF16(rawData);
-                    const contentBase64 = toBase64(JSON.stringify({ compressed: true, data: compressed }));
-
-                    // 3. 构建请求体
-                    const body = {
-                        access_token: config.giteeToken,
-                        content: contentBase64,
-                        message: "Manual sync from App"
-                    };
-                    if (sha) body.sha = sha; // 只有更新时才带 sha
-
-                    // 4. 发送请求
-                    const res = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}`, {
-                        method: method,
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body)
-                    });
-
-                    if(!res.ok) {
-                        const errData = await res.json();
-                        throw new Error(`上传失败: ${errData.message || res.status}`);
-                    }
-                    alert("✅ Gitee 同步成功！");
-                } catch(e) { 
-                    alert("同步错误: " + e.message + "\n\n(提示: 请检查 Token 权限和仓库名称是否正确)"); 
-                } finally { setIsSyncing(false); }
-            };
-
-            const syncFromGitee = async () => {
-                if (!config.giteeToken) { alert("请先去[设置]配置 Gitee"); return; }
-                if (!confirm("⚠️ 下载将覆盖本地数据，确定吗？")) return;
-                setIsSyncing(true);
-                try {
-                    const res = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}?access_token=${config.giteeToken}`);
-                    if(!res.ok) throw new Error("下载失败 (文件不存在或配置错误)");
-                    const json = await res.json();
-                    const fileObj = JSON.parse(fromBase64(json.content));
-                    let data = fileObj.compressed ? JSON.parse(LZString.decompressFromUTF16(fileObj.data)) : fileObj;
-                    
-                    if (data.storage) {
-                        Object.keys(data.storage).forEach(k => { if(k.startsWith('kaoyan_')) localStorage.setItem(k, data.storage[k]); });
-                        alert("✅ 数据已拉取并刷新！");
-                        window.location.reload();
-                    }
-                } catch(e) { alert(e.message); } finally { setIsSyncing(false); }
             };
 
             return (
@@ -1024,7 +770,7 @@
                     <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 h-fit">
                         <h2 className="text-2xl font-bold mb-6 text-gray-800">数据中心</h2>
                         <div className="flex mb-6 border-b border-gray-100">
-                            <button onClick={() => setActiveTab('data')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='data'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>管理与同步</button>
+                            <button onClick={() => setActiveTab('data')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='data'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>备份与恢复</button>
                             <button onClick={() => setActiveTab('ai')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='ai'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>AI 速查</button>
                             <button onClick={() => setActiveTab('text')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='text'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>批量粘贴</button>
                         </div>
@@ -1036,26 +782,19 @@
                                     <button onClick={repairData} className="px-4 py-2 bg-white text-orange-600 border border-orange-200 rounded-lg font-bold text-xs shadow-sm hover:bg-orange-100 transition">🛠️ 修复</button>
                                 </div>
 
-                                <div className="p-6 bg-red-50 rounded-2xl border border-red-100 shadow-sm">
-                                    <div className="flex items-center mb-4"><span className="text-2xl mr-2">🇨🇳</span><h3 className="font-bold text-red-900 text-lg">Gitee 极速同步</h3></div>
-                                    <p className="text-red-800/80 text-xs mb-4">使用国内码云仓库，速度快且稳定。请确保已在设置中填入 Token。</p>
+                                <div className="p-6 bg-indigo-50 rounded-2xl border border-indigo-100 shadow-sm">
+                                    <div className="flex items-center mb-4"><Icon name="Folder" size={24} className="mr-2 text-indigo-600"/><h3 className="font-bold text-indigo-900 text-lg">本地备份</h3></div>
+                                    <p className="text-indigo-800/80 text-xs mb-4">生成 .json 文件并保存到手机/电脑，安全可靠。</p>
                                     <div className="grid grid-cols-2 gap-4">
-                                        <button onClick={syncToGitee} disabled={isSyncing} className="py-3 bg-white text-red-600 border border-red-200 rounded-xl font-bold shadow-sm hover:bg-red-50 flex flex-col items-center justify-center transition">
-                                            {isSyncing ? <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin mb-1"></div> : <Icon name="Upload" size={20} className="mb-1"/>}
-                                            <span className="text-xs">上传到 Gitee</span>
+                                        <button onClick={exportFullData} className="py-3 bg-white text-indigo-600 border border-indigo-200 rounded-xl font-bold shadow-sm hover:bg-indigo-50 flex flex-col items-center justify-center transition">
+                                            <Icon name="Upload" size={20} className="mb-1"/><span className="text-xs">导出文件</span>
                                         </button>
-                                        <button onClick={syncFromGitee} disabled={isSyncing} className="py-3 bg-white text-red-600 border border-red-200 rounded-xl font-bold shadow-sm hover:bg-red-50 flex flex-col items-center justify-center transition">
-                                            {isSyncing ? <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin mb-1"></div> : <Icon name="Download" size={20} className="mb-1"/>}
-                                            <span className="text-xs">从 Gitee 拉取</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4 pt-2">
-                                    <button onClick={exportFullData} className="py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-sm flex items-center justify-center"><Icon name="Upload" size={16} className="mr-2"/> 分享备份</button>
-                                    <div className="relative">
-                                        <button className="w-full h-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-sm flex items-center justify-center"><Icon name="Download" size={16} className="mr-2"/> 恢复备份</button>
-                                        <input type="file" onChange={handleFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/>
+                                        <div className="relative">
+                                            <button className="w-full h-full py-3 bg-white text-indigo-600 border border-indigo-200 rounded-xl font-bold shadow-sm hover:bg-indigo-50 flex flex-col items-center justify-center transition">
+                                                <Icon name="Download" size={20} className="mb-1"/><span className="text-xs">导入文件</span>
+                                            </button>
+                                            <input type="file" onChange={handleFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -1107,38 +846,7 @@
                 <div className="flex-1 overflow-y-auto custom-scroll bg-gray-50 p-4 flex justify-center">
                     <div className="w-full max-w-xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 h-fit space-y-6">
                         <h2 className="text-xl font-bold border-b border-gray-100 pb-4 text-gray-800">设置</h2>
-                        
-                        <div className="bg-red-50 p-4 rounded-xl border border-red-100 flex items-center justify-between">
-                            <div>
-                                <h3 className="font-bold text-red-900 flex items-center"><span className="mr-1">🇨🇳</span> Gitee 极速同步</h3>
-                                <p className="text-xs text-red-700 mt-1">使用国内服务器，彻底解决连接失败问题。</p>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" checked={config.autoSync || false} onChange={e => setConfig({...config, autoSync: e.target.checked})} className="sr-only peer"/>
-                                <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
-                            </label>
-                        </div>
-
-                        <div className="space-y-4">
-                            <h3 className="text-sm font-bold text-gray-500 uppercase">Gitee 配置</h3>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 mb-1">私人令牌 (Access Token)</label>
-                                <input value={config.giteeToken || ''} onChange={e => updateConfigTrimmed('giteeToken', e.target.value)} type="password" placeholder="例如: 8d9a..." className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-red-500 transition font-mono text-sm"/>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-700 mb-1">用户名 (Owner)</label>
-                                    <input value={config.giteeOwner || ''} onChange={e => updateConfigTrimmed('giteeOwner', e.target.value)} placeholder="例如: zhangsan" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-red-500 transition font-mono text-sm"/>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-700 mb-1">仓库名 (Repo)</label>
-                                    <input value={config.giteeRepo || ''} onChange={e => updateConfigTrimmed('giteeRepo', e.target.value)} placeholder="例如: vocab_backup" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 outline-none focus:ring-2 focus:ring-red-500 transition font-mono text-sm"/>
-                                </div>
-                            </div>
-                            <p className="text-[10px] text-gray-400">数据将自动保存在仓库的 <code>backup.json</code> 文件中。</p>
-                        </div>
-
-                        <div className="border-t pt-4">
+                        <div className="pt-2">
                             <label className="block text-sm font-bold text-gray-700 mb-2">AI 设置</label>
                             <select value={selectedPreset} onChange={(e) => handlePresetChange(e.target.value)} className="w-full border border-gray-200 p-3 rounded-xl bg-white outline-none mb-3">
                                 {Object.entries(API_PRESETS).map(([key, val]) => (<option key={key} value={key}>{val.name}</option>))}
@@ -1149,124 +857,12 @@
                             <input value={config.apiKey} onChange={e => updateConfigTrimmed('apiKey', e.target.value)} type="password" placeholder="AI API Key" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50 mb-3"/>
                             <input value={config.model} onChange={e => updateConfigTrimmed('model', e.target.value)} placeholder="Model Name" className="w-full border border-gray-200 p-3 rounded-xl bg-gray-50"/>
                         </div>
-
                         <button onClick={()=>{ localStorage.setItem('kaoyan_config', JSON.stringify(config)); setView('home'); }} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-xl font-bold shadow-lg transition active:scale-95">保存配置</button>
                     </div>
                 </div>
             );
         };
         
-        // --- 自动同步 Hook (核心 Gitee 逻辑同样已修复) ---
-        const useAutoSync = (words, setWords, config) => {
-            const [syncStatus, setSyncStatus] = useState('idle');
-            const [lastSyncTime, setLastSyncTime] = useState(0);
-            const timerRef = useRef(null);
-            const FILE_PATH = "backup.json";
-
-            useEffect(() => {
-                if (config.autoSync && config.giteeToken && config.giteeOwner && config.giteeRepo) {
-                    pullFromGitee(true);
-                }
-            }, []);
-
-            useEffect(() => {
-                if (!config.autoSync || !config.giteeToken || !config.giteeOwner || !config.giteeRepo || words.length === 0) return;
-                if (Date.now() - lastSyncTime < 5000) return;
-
-                setSyncStatus('pending');
-                if (timerRef.current) clearTimeout(timerRef.current);
-                
-                timerRef.current = setTimeout(() => { pushToGitee(); }, 3000);
-                return () => clearTimeout(timerRef.current);
-            }, [words, config]);
-
-            const toBase64 = (str) => window.btoa(unescape(encodeURIComponent(str)));
-            const fromBase64 = (str) => decodeURIComponent(escape(window.atob(str)));
-
-            const pushToGitee = async () => {
-                setSyncStatus('syncing');
-                try {
-                    // 1. 获取 SHA
-                    const checkUrl = `https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}?access_token=${config.giteeToken}`;
-                    const checkRes = await fetch(checkUrl);
-                    
-                    let sha = "";
-                    let method = "POST"; 
-
-                    if (checkRes.ok) {
-                        const fileData = await checkRes.json();
-                        sha = fileData.sha;
-                        method = "PUT"; 
-                    } else if (checkRes.status === 404) {
-                        method = "POST";
-                    } else {
-                        throw new Error("Check failed");
-                    }
-
-                    // 2. 准备数据
-                    const storage = {};
-                    for(let i=0; i<localStorage.length; i++) {
-                        const key = localStorage.key(i);
-                        if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key);
-                    }
-                    const rawData = JSON.stringify({ type: 'GITEE_SYNC', timestamp: Date.now(), storage });
-                    const compressed = LZString.compressToUTF16(rawData);
-                    const contentBase64 = toBase64(JSON.stringify({ compressed: true, data: compressed }));
-
-                    const body = {
-                        access_token: config.giteeToken,
-                        content: contentBase64,
-                        message: "Auto sync from App"
-                    };
-                    if (sha) body.sha = sha;
-
-                    const res = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}`, {
-                        method: method,
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body)
-                    });
-
-                    if (!res.ok) throw new Error("Gitee Upload Failed");
-                    setSyncStatus('success');
-                    setLastSyncTime(Date.now());
-                    setTimeout(() => setSyncStatus('idle'), 2000);
-                } catch (e) {
-                    console.error(e);
-                    setSyncStatus('error');
-                }
-            };
-
-            const pullFromGitee = async (isInit = false) => {
-                setSyncStatus('syncing');
-                try {
-                    const res = await fetch(`https://gitee.com/api/v5/repos/${config.giteeOwner}/${config.giteeRepo}/contents/${FILE_PATH}?access_token=${config.giteeToken}`);
-                    if (!res.ok) throw new Error("Gitee Download Failed");
-                    
-                    const json = await res.json();
-                    const fileContent = fromBase64(json.content);
-                    const fileObj = JSON.parse(fileContent);
-
-                    let data = fileObj.compressed ? JSON.parse(LZString.decompressFromUTF16(fileObj.data)) : fileObj;
-
-                    if (data && data.storage) {
-                        const localTime = parseInt(localStorage.getItem('kaoyan_sync_time') || '0');
-                        if (isInit && data.timestamp <= localTime) { setSyncStatus('idle'); return; }
-
-                        Object.keys(data.storage).forEach(k => { if(k.startsWith('kaoyan_')) localStorage.setItem(k, data.storage[k]); });
-                        localStorage.setItem('kaoyan_sync_time', data.timestamp);
-                        if(data.storage.kaoyan_vocab_list) setWords(JSON.parse(data.storage.kaoyan_vocab_list));
-                        
-                        setSyncStatus('success');
-                        setLastSyncTime(Date.now());
-                        if(isInit) alert("🚀 Gitee 同步成功！");
-                        setTimeout(() => setSyncStatus('idle'), 2000);
-                    }
-                } catch (e) { console.error(e); setSyncStatus('error'); }
-            };
-
-            return { syncStatus, pushToGitee, pullFromGitee }; 
-        };
-
         const App = () => {
             const [view, setView] = useState('home');
             const [words, setWords] = useState([]);
@@ -1285,8 +881,6 @@
                 if(loader && loader.style.border) loader.remove();
             }, []);
 
-            const { syncStatus } = useAutoSync(words, setWords, config);
-
             const handleBack = () => {
                 if (view === 'study') {
                     if (sessionConfig.type === 'group_study') setView('group_list');
@@ -1297,7 +891,7 @@
 
             return (
                 <div className="h-full flex flex-col bg-gray-50">
-                    <Navbar view={view} setView={setView} syncStatus={syncStatus} />
+                    <Navbar view={view} setView={setView} />
                     <main className="flex-1 overflow-hidden flex flex-col relative">
                         {view === 'home' && <Dashboard words={words} setView={setView} setSessionConfig={setSessionConfig} />}
                         {view === 'group_list' && <GroupList words={words} setWords={setWords} category={sessionConfig.category} setView={setView} setSessionConfig={setSessionConfig} config={config} />}
@@ -1305,12 +899,7 @@
                         {view === 'list' && <WordListMode words={words} setWords={setWords} setChatSession={setChatSession} />}
                         {view === 'import' && <ImportExport setWords={setWords} words={words} setView={setView} config={config} />}
                         {view === 'settings' && <SettingsPanel config={config} setConfig={setConfig} setView={setView} />}
-                        
-                        {chatSession && (
-                            <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4 animate-fade-in">
-                                <WordChat word={chatSession} onClose={() => setChatSession(null)} config={config} />
-                            </div>
-                        )}
+                        {chatSession && (<div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4 animate-fade-in"><WordChat word={chatSession} onClose={() => setChatSession(null)} config={config} /></div>)}
                     </main>
                     <style>{`
                         @keyframes slide-up { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
