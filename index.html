@@ -520,90 +520,6 @@
                 const result = [];
                 const batchKeys = Object.keys(batches).sort((a, b) => { if (a === 'default') return -1; if (b === 'default') return 1; return parseInt(b.split('-')[1] || 0) - parseInt(a.split('-')[1] || 0); });
                 let globalIndex = 1;
-                batchKeys.forEach(batchId => {
-                    const batchWords = batches[batchId]; const count = Math.ceil(batchWords.length / groupSize);
-                    for(let i=0; i<count; i++) {
-                        const start = i * groupSize; const end = Math.min((i+1) * groupSize, batchWords.length);
-                        const groupWords = batchWords.slice(start, end);
-                        const mastered = groupWords.filter(w => w.stats && w.stats.interval > 0).length;
-                        const meta = groupMeta[batchId] || {};
-                        let batchName = meta.name;
-                        if (!batchName) {
-                            if (batchId !== 'default') { 
-                                const ts = parseInt(batchId.split('-')[1]); 
-                                if (!isNaN(ts)) { const date = new Date(ts); batchName = `${date.getFullYear()}/${date.getMonth()+1}/${date.getDate()} 导入`; } else { batchName = "新批次"; } 
-                            } else { batchName = "默认词库"; }
-                        }
-                        result.push({ index: globalIndex++, batchId, batchIndex: i, batchName, desc: meta.desc || "", start: start + 1, end, total: groupWords.length, mastered, words: groupWords });
-                    }
-                });
-                return result;
-            }, [words, category, config.groupSize, groupMeta]);
-
-            const displayTitle = ({ high: "高频词", medium: "中频词", low: "低频词", zero: "零频词", uncategorized: "未分类" })[category] || category;
-            const startGroup = (batchId, batchIndex) => { setSessionConfig({ type: 'group_study', category, batchId, batchIndex }); setView('study'); };
-            
-            const handleDeleteGroup = (e, groupWords) => {
-                e.stopPropagation();
-                if(confirm(`确定要删除该组的 ${groupWords.length} 个单词吗？此操作不可恢复。`)) {
-                    const idsToDelete = groupWords.map(w => w.id);
-                    const newWords = words.filter(w => !idsToDelete.includes(w.id));
-                    setWords(newWords);
-                    localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
-                }
-            };
-
-            const openMoveModal = (e, groupWords) => { e.stopPropagation(); setMoveModal({ open: true, targetGroupWords: groupWords }); setCustomTarget(''); };
-            const performMove = (targetCat) => {
-                if(!targetCat) return;
-                const idsToMove = moveModal.targetGroupWords.map(w => w.id);
-                const newWords = words.map(w => idsToMove.includes(w.id) ? { ...w, category: targetCat } : w);
-                setWords(newWords);
-                localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
-                setMoveModal({ open: false, targetGroupWords: [] });
-                alert("转移成功！");
-            };
-
-            const openEditModal = (e, batchId, currentName, currentDesc) => {
-                e.stopPropagation();
-                const isDefaultName = currentName.includes("导入") || currentName === "默认词库" || currentName === "新批次";
-                setEditModal({ open: true, batchId, currentName: isDefaultName ? '' : currentName, currentDesc: currentDesc || '' });
-            };
-
-            const saveGroupInfo = () => {
-                const newMeta = { ...groupMeta, [editModal.batchId]: { name: editModal.currentName.trim(), desc: editModal.currentDesc.trim() } };
-                setGroupMeta(newMeta);
-                localStorage.setItem('kaoyan_group_meta', JSON.stringify(newMeta));
-                setEditModal({ open: false, batchId: '', currentName: '', currentDesc: '' });
-            };
-
-            return (
-                <div className="flex-1 overflow-y-auto custom-scroll p-4 bg-gray-50 relative">
-                    <div className="max-w-5xl mx-auto pb-20">
-                        <div className="flex items-center mb-6">
-                            <h2 className="text-2xl font-bold text-gray-800 truncate border-l-4 border-indigo-600 pl-3">{displayTitle}</h2>
-                            <span className="ml-3 text-sm text-gray-500 bg-gray-200 px-2 py-0.5 rounded-md">分组管理</span>
-const GroupList = ({ words, setWords, category, setView, setSessionConfig, config }) => {
-            const [moveModal, setMoveModal] = useState({ open: false, targetGroupWords: [] });
-            const [editModal, setEditModal] = useState({ open: false, batchId: '', currentName: '', currentDesc: '' });
-            const [customTarget, setCustomTarget] = useState('');
-            const [groupMeta, setGroupMeta] = useState({});
-
-            useEffect(() => {
-                try {
-                    const savedMeta = localStorage.getItem('kaoyan_group_meta');
-                    if (savedMeta) setGroupMeta(JSON.parse(savedMeta));
-                } catch (e) { console.error("加载分组信息失败", e); }
-            }, []);
-
-            const groups = useMemo(() => {
-                const catWords = words.filter(w => (w.category || 'uncategorized') === category);
-                const groupSize = config.groupSize || 208;
-                const batches = {};
-                catWords.forEach(w => { const batchId = w.importId || 'default'; if (!batches[batchId]) batches[batchId] = []; batches[batchId].push(w); });
-                const result = [];
-                const batchKeys = Object.keys(batches).sort((a, b) => { if (a === 'default') return -1; if (b === 'default') return 1; return parseInt(b.split('-')[1] || 0) - parseInt(a.split('-')[1] || 0); });
-                let globalIndex = 1;
                 
                 batchKeys.forEach(batchId => {
                     const batchWords = batches[batchId]; const count = Math.ceil(batchWords.length / groupSize);
@@ -756,6 +672,10 @@ const GroupList = ({ words, setWords, category, setView, setSessionConfig, confi
                 </div>
             );
         };
+                
+            
+                        
+
 const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
             const [queue, setQueue] = useState([]);
             const [currentIdx, setCurrentIdx] = useState(0);
