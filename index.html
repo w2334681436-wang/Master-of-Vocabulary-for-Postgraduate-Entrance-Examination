@@ -585,12 +585,13 @@
             );
         };
 
-        const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
+    const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
             const [queue, setQueue] = useState([]);
             const [currentIdx, setCurrentIdx] = useState(0);
             const [isFlipped, setIsFlipped] = useState(false);
             const [isFinished, setIsFinished] = useState(false);
-            const [isGenerating, setIsGenerating] = useState(false);
+            // 🔥 修改：把全局 loading 改成记录具体哪个释义在加载 (存 index，-1 表示没有)
+            const [generatingMeaningIdx, setGeneratingMeaningIdx] = useState(-1);
             const [isFullscreen, setIsFullscreen] = useState(false);
 
             useEffect(() => {
@@ -649,17 +650,30 @@
             const toggleMeaningMastery = (e, mIdx) => { e.stopPropagation(); const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], isMastered:!meanings[mIdx].isMastered, _forceShow:false}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); const newWords=[...words]; const idx=newWords.findIndex(w=>w.id===currentCard.id); if(idx!==-1){ newWords[idx]={...newWords[idx], meanings:meanings}; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); } };
             const toggleForceShow = (mIdx) => { const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], _forceShow:!meanings[mIdx]._forceShow}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); };
             
-            // 🔥 修改：AI 生成不再是简单的例句，而是“考研避坑/考法”
             const generateSentence = async (e, meaningIndex) => {
-                e.stopPropagation(); if (!config.apiKey) { alert("请设置 API Key"); return; } setIsGenerating(true);
+                e.stopPropagation(); 
+                if (!config.apiKey) { alert("请设置 API Key"); return; } 
+                // 🔥 修改：设置当前正在生成的索引，触发 UI 变化
+                setGeneratingMeaningIdx(meaningIndex); 
+
                 try {
-                    // Prompt 升级：要求列出熟词僻义、易混词、真题坑点
-                    const prompt = `针对考研英语，请列出单词 "${currentCard.word}" (释义: "${currentCard.meanings[meaningIndex].def}") 在真题中可能出现的：\n1. 熟词僻义\n2. 易混词辨析 (如 adapt vs adopt)\n3. 常见的"坑"点\n请用中文简练回答。`;
+                    // 🔥 修改：Prompt 极其严格，要求 Markdown 列表和字数限制
+                    const prompt = `针对考研英语，请用 Markdown 无序列表格式（- 开头），**极简**列出单词 "${currentCard.word}" 在释义 "${currentCard.meanings[meaningIndex].def}" 下的：\n1. **熟词僻义** (如有)\n2. **易混词** (仅限一个最像的)\n3. **真题坑点** (搭配/考法)\n\n要求：**总字数严格控制在 60 字以内**！直接写干货，不要任何开场白。`;
+                    
                     let newSentence = "";
                     if (config.type === 'google') { const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({contents:[{parts:[{text:prompt}]}]}) }); const data = await res.json(); newSentence = data.candidates?.[0]?.content?.parts?.[0]?.text; }
                     else { let baseUrl = config.baseUrl.replace(/\/$/, ""); if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel") && !baseUrl.includes("lingyiwanwu") && !baseUrl.includes("siliconflow")) baseUrl += "/v1"; const res = await fetch(`${baseUrl}/chat/completions`, { method: 'POST', headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${config.apiKey}`}, body: JSON.stringify({model:config.model, messages:[{role:"user",content:prompt}]}) }); const data = await res.json(); newSentence = data.choices?.[0]?.message?.content; }
-                    if(newSentence) { const s = newSentence.trim().replace(/^["']|["']$/g, ''); const newWords = [...words]; newWords.find(w => w.id === currentCard.id).meanings[meaningIndex].sentence = s; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); const newQueue = [...queue]; newQueue[currentIdx].meanings[meaningIndex].sentence = s; setQueue(newQueue); }
-                } catch(e){ alert(e.message); } finally { setIsGenerating(false); }
+                    
+                    if(newSentence) { 
+                        const s = newSentence.trim().replace(/^["']|["']$/g, ''); 
+                        const newWords = [...words]; newWords.find(w => w.id === currentCard.id).meanings[meaningIndex].sentence = s; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); const newQueue = [...queue]; newQueue[currentIdx].meanings[meaningIndex].sentence = s; setQueue(newQueue); 
+                    }
+                } catch(e){ 
+                    alert("生成失败: " + e.message); 
+                } finally { 
+                    // 🔥 修改：恢复状态
+                    setGeneratingMeaningIdx(-1); 
+                }
             };
 
             return (
@@ -720,15 +734,25 @@
                                                     </div>
                                                     <div className="mt-4 pt-3 border-t border-gray-50">
                                                         {m.sentence ? 
-                                                            <div className="text-sm md:text-base text-gray-700 bg-orange-50 p-3 rounded-lg border-l-4 border-orange-300">
-                                                                <div className="font-bold text-orange-800 mb-1 flex items-center"><span className="text-lg mr-1">🔥</span> 考点笔记：</div>
-                                                                {m.sentence}
+                                                            <div className="text-sm text-gray-700 bg-orange-50 p-3 rounded-lg border-l-4 border-orange-300">
+                                                                <div className="font-bold text-orange-800 mb-2 flex items-center text-xs md:text-sm"><span className="mr-1">🔥</span> 考点笔记</div>
+                                                                {/* 🔥 修改：使用 Markdown 渲染，支持加粗和列表 */}
+                                                                <div className="markdown-body text-xs md:text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: marked.parse(m.sentence) }} />
                                                             </div> 
                                                             : 
-                                                            // 🔥 修改：按钮变为“考研避坑”
-                                                            <button onClick={(e) => generateSentence(e, idx)} className="group flex items-center gap-2 px-3 py-2 bg-orange-50 hover:bg-orange-100 text-orange-600 rounded-lg transition-all active:scale-95 w-fit border border-orange-100 shadow-sm">
-                                                                <span className="text-lg">🔥</span>
-                                                                <span className="text-xs md:text-sm font-bold whitespace-nowrap">考研避坑 (熟词/辨析)</span>
+                                                            // 🔥 修改：根据 generatingMeaningIdx 状态显示加载中
+                                                            <button onClick={(e) => generateSentence(e, idx)} disabled={generatingMeaningIdx === idx} className={`group flex items-center gap-2 px-3 py-2 rounded-lg transition-all w-fit border shadow-sm ${generatingMeaningIdx === idx ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-wait' : 'bg-orange-50 hover:bg-orange-100 text-orange-600 border-orange-100 active:scale-95'}`}>
+                                                                {generatingMeaningIdx === idx ? (
+                                                                    <>
+                                                                        <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                                                                        <span className="text-xs font-bold">AI 挖掘中...</span>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <span className="text-lg">🔥</span>
+                                                                        <span className="text-xs md:text-sm font-bold whitespace-nowrap">考研避坑 (熟词/辨析)</span>
+                                                                    </>
+                                                                )}
                                                             </button>
                                                         }
                                                     </div>
