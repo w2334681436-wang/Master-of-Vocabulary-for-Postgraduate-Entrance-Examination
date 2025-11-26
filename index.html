@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>考研词汇大师</title>
+    <title>考研词汇大师 - 进阶版</title>
     
     <link rel="manifest" href="./manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -173,12 +173,14 @@
             useEffect(() => { scrollToBottom(); }, [messages]);
 
             useEffect(() => {
+                // 🔥 修改：AI 私教默认先讲词根词缀
                 const initialMsg = {
                     role: "assistant",
-                    content: `Hi! 我是你的专属 AI 私教。\n我们今天要死磕的单词是： **${word}**。\n\n你可以切换上方模式：\n⚡ **快速**：简单通俗讲解\n📖 **深度**：考研真题考法\n👄 **口语**：纯英对话练听力`
+                    content: `Hi! 我是你的专属 AI 私教。\n我们今天要死磕的单词是： **${word}**。\n\n💡 **默认模式**：先拆词根，再讲考点，最后给记忆口诀。\n\n你可以切换上方模式：\n⚡ **快速**：简单通俗讲解\n📖 **深度**：考研真题考法\n👄 **口语**：纯英对话练听力`
                 };
                 setMessages([initialMsg]);
-                handleSend(null, `请用通俗易懂、生活化的场景（像讲故事一样）讲解单词 "${word}"。拆分为：1.作为名词/动词的核心含义；2.给出一个容易记住的场景例子；3.总结记忆点。使用 Markdown 格式，重点加粗。`);
+                // 🔥 修改：自动发送的 Prompt 明确要求词根词缀和考研避坑
+                handleSend(null, `请严格按照以下步骤讲解单词 "${word}"：\n1. **词根词缀拆解**（这是最关键的）：详细拆分并解释每一部分。\n2. **核心含义与考法**：结合考研真题语境解释，列出熟词僻义。\n3. **记忆口诀**：给出一个好记的顺口溜。\n使用 Markdown 格式，重点加粗。`);
             }, []);
 
             const handleSend = async (e, manualContent) => {
@@ -282,7 +284,6 @@
         // --- Components ---
 
        const Navbar = ({ view, setView }) => {
-            // 独立的导航栏全屏逻辑
             const toggleFullscreen = () => {
                 if (!document.fullscreenElement) {
                     document.documentElement.requestFullscreen().catch(e => console.log(e));
@@ -301,11 +302,9 @@
                             </div>
                         </div>
                         <div className="flex space-x-1 items-center">
-                            {/* 🔥 新增：在这里加了一个全屏按钮 */}
                             <button onClick={toggleFullscreen} className="p-2 rounded-lg hover:bg-indigo-500 transition" title="全屏/退出">
                                 <Icon name="Maximize" />
                             </button>
-                            {/* 原有的按钮保持不变 */}
                             <button onClick={() => setView('home')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'home' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Brain" /></button>
                             <button onClick={() => setView('list')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'list' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="List" /></button>
                             <button onClick={() => setView('import')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'import' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Upload" /></button>
@@ -412,13 +411,11 @@
             return (
                 <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 bg-gray-50">
                     <div className="max-w-5xl mx-auto space-y-8 pb-10">
-                        {/* 智能复习卡片 - 图标已修复居中 */}
                         <div onClick={startReview} className="w-full bg-gradient-to-br from-indigo-600 to-violet-600 p-8 rounded-2xl text-white shadow-xl shadow-indigo-200 cursor-pointer transform transition hover:-translate-y-1 hover:shadow-2xl active:scale-[0.99] relative overflow-hidden flex flex-col md:flex-row justify-between items-center group">
                             <div className="z-10 relative text-center md:text-left">
                                 <h2 className="text-3xl font-bold mb-2 tracking-tight">智能复习计划</h2>
                                 <p className="text-indigo-100 text-lg opacity-90">今日待复习: <span className="font-bold text-white bg-white/20 px-3 py-0.5 rounded-lg ml-1">{stats.review}</span> 个单词</p>
                             </div>
-                            {/* 这里使用 flex items-center justify-center 确保图标居中 */}
                             <div className="mt-4 md:mt-0 bg-white/20 w-20 h-20 rounded-full flex items-center justify-center z-10 relative group-hover:scale-110 transition duration-300 backdrop-blur-sm border border-white/30">
                                 <Icon name="Brain" size={40} className="text-white"/>
                             </div>
@@ -594,7 +591,6 @@
             const [isFlipped, setIsFlipped] = useState(false);
             const [isFinished, setIsFinished] = useState(false);
             const [isGenerating, setIsGenerating] = useState(false);
-            // 新增：全屏状态
             const [isFullscreen, setIsFullscreen] = useState(false);
 
             useEffect(() => {
@@ -621,7 +617,6 @@
 
             useEffect(() => { if (queue.length > 0 && !isFinished && !isFlipped) { const word = queue[currentIdx]?.word; if (word) { const timer = setTimeout(() => playAudio(word), 300); return () => clearTimeout(timer); } } }, [currentIdx, queue, isFinished]);
 
-            // 新增：全屏切换逻辑
             const toggleFullscreen = () => {
                 if (!document.fullscreenElement) {
                     document.documentElement.requestFullscreen().catch(err => {
@@ -653,10 +648,13 @@
             };
             const toggleMeaningMastery = (e, mIdx) => { e.stopPropagation(); const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], isMastered:!meanings[mIdx].isMastered, _forceShow:false}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); const newWords=[...words]; const idx=newWords.findIndex(w=>w.id===currentCard.id); if(idx!==-1){ newWords[idx]={...newWords[idx], meanings:meanings}; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); } };
             const toggleForceShow = (mIdx) => { const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], _forceShow:!meanings[mIdx]._forceShow}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); };
+            
+            // 🔥 修改：AI 生成不再是简单的例句，而是“考研避坑/考法”
             const generateSentence = async (e, meaningIndex) => {
                 e.stopPropagation(); if (!config.apiKey) { alert("请设置 API Key"); return; } setIsGenerating(true);
                 try {
-                    const prompt = `English example sentence for "${currentCard.word}" meaning "${currentCard.meanings[meaningIndex].def}".`;
+                    // Prompt 升级：要求列出熟词僻义、易混词、真题坑点
+                    const prompt = `针对考研英语，请列出单词 "${currentCard.word}" (释义: "${currentCard.meanings[meaningIndex].def}") 在真题中可能出现的：\n1. 熟词僻义\n2. 易混词辨析 (如 adapt vs adopt)\n3. 常见的"坑"点\n请用中文简练回答。`;
                     let newSentence = "";
                     if (config.type === 'google') { const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({contents:[{parts:[{text:prompt}]}]}) }); const data = await res.json(); newSentence = data.candidates?.[0]?.content?.parts?.[0]?.text; }
                     else { let baseUrl = config.baseUrl.replace(/\/$/, ""); if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel") && !baseUrl.includes("lingyiwanwu") && !baseUrl.includes("siliconflow")) baseUrl += "/v1"; const res = await fetch(`${baseUrl}/chat/completions`, { method: 'POST', headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${config.apiKey}`}, body: JSON.stringify({model:config.model, messages:[{role:"user",content:prompt}]}) }); const data = await res.json(); newSentence = data.choices?.[0]?.message?.content; }
@@ -670,17 +668,14 @@
                         <div className="h-full bg-indigo-600 transition-all duration-300 ease-out" style={{width: `${(currentIdx / queue.length) * 100}%`}}></div>
                     </div>
                     
-                    {/* 左上角：退出按钮 */}
                     <button onClick={onExit} className="absolute top-4 left-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title="退出">
                         <Icon name="ArrowLeft" size={24}/>
                     </button>
                     
-                    {/* 右上角：全屏按钮 (新增) - 放在 AI 按钮左边一点 */}
                     <button onClick={toggleFullscreen} className="absolute top-4 right-16 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title={isFullscreen ? "退出全屏" : "全屏模式"}>
                         <Icon name={isFullscreen ? "Minimize" : "Maximize"} size={24}/>
                     </button>
 
-                    {/* 右上角：AI 按钮 */}
                     <button onClick={(e)=>{e.stopPropagation(); setChatSession(currentCard.word);}} className="absolute top-4 right-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-indigo-500 hover:text-white hover:bg-indigo-500 transition" title="AI 详解">
                         <Icon name="MessageCircle" size={24}/>
                     </button>
@@ -725,9 +720,16 @@
                                                     </div>
                                                     <div className="mt-4 pt-3 border-t border-gray-50">
                                                         {m.sentence ? 
-                                                            <p className="text-sm md:text-lg text-gray-600 italic bg-gray-50 p-3 rounded-lg border-l-4 border-indigo-200">"{m.sentence}"</p> 
+                                                            <div className="text-sm md:text-base text-gray-700 bg-orange-50 p-3 rounded-lg border-l-4 border-orange-300">
+                                                                <div className="font-bold text-orange-800 mb-1 flex items-center"><span className="text-lg mr-1">🔥</span> 考点笔记：</div>
+                                                                {m.sentence}
+                                                            </div> 
                                                             : 
-                                                            <button onClick={(e) => generateSentence(e, idx)} className="group flex items-center gap-2 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition-all active:scale-95 w-fit"><Icon name="Sparkles" size={16} /><span className="text-xs md:text-sm font-bold whitespace-nowrap">AI 生成例句</span></button>
+                                                            // 🔥 修改：按钮变为“考研避坑”
+                                                            <button onClick={(e) => generateSentence(e, idx)} className="group flex items-center gap-2 px-3 py-2 bg-orange-50 hover:bg-orange-100 text-orange-600 rounded-lg transition-all active:scale-95 w-fit border border-orange-100 shadow-sm">
+                                                                <span className="text-lg">🔥</span>
+                                                                <span className="text-xs md:text-sm font-bold whitespace-nowrap">考研避坑 (熟词/辨析)</span>
+                                                            </button>
                                                         }
                                                     </div>
                                                 </div>
