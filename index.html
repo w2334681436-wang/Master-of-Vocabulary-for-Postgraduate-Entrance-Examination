@@ -499,9 +499,7 @@
             );
         };
 
-        => { setSessionConfig({ type: 'group_study', category, batchId, batchIndex }); setView('study'); };
-
-        const GroupList = ({ words, setWords, category, setView, setSessionConfig, config }) => {
+                     const GroupList = ({ words, setWords, category, setView, setSessionConfig, config }) => {
             const [moveModal, setMoveModal] = useState({ open: false, targetGroupWords: [] });
             const [editModal, setEditModal] = useState({ open: false, batchId: '', currentName: '', currentDesc: '' });
             const [customTarget, setCustomTarget] = useState('');
@@ -759,7 +757,6 @@
                 </div>
             );
         };
-                        
 
 const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
             const [queue, setQueue] = useState([]);
