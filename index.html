@@ -758,19 +758,17 @@
             );
         };
 
-const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
+ 
+       const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
             const [queue, setQueue] = useState([]);
             const [currentIdx, setCurrentIdx] = useState(0);
             const [isFlipped, setIsFlipped] = useState(false);
             const [isFinished, setIsFinished] = useState(false);
             
-            // Loading 状态
             const [isGeneratingNote, setIsGeneratingNote] = useState(false);
-            const [syntaxLoading, setSyntaxLoading] = useState(false); // 长难句 Loading
+            const [syntaxLoading, setSyntaxLoading] = useState(false);
             
             const [isFullscreen, setIsFullscreen] = useState(false);
-            
-            // 模态框状态
             const [syntaxModal, setSyntaxModal] = useState({ open: false, content: '' });
 
             useEffect(() => {
@@ -837,64 +835,57 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
             const toggleMeaningMastery = (e, mIdx) => { e.stopPropagation(); const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], isMastered:!meanings[mIdx].isMastered, _forceShow:false}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); const newWords=[...words]; const idx=newWords.findIndex(w=>w.id===currentCard.id); if(idx!==-1){ newWords[idx]={...newWords[idx], meanings:meanings}; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); } };
             const toggleForceShow = (mIdx) => { const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], _forceShow:!meanings[mIdx]._forceShow}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); };
             
-            // 生成综合避坑指南
             const generateWordNote = async (e) => {
                 e.stopPropagation(); 
                 if (!config.apiKey) { alert("请设置 API Key"); return; } 
                 setIsGeneratingNote(true); 
                 try {
                     const prompt = `针对考研英语，请为单词 "${currentCard.word}" 生成一份【综合避坑指南】。请用 Markdown 列表格式，包含：\n1. **熟词僻义**：列出真题中常考但容易被忽略的意思。\n2. **易混辨析**：最容易搞混的 1-2 个词。\n3. **真题坑点**：常见的搭配陷阱或理解误区。\n\n要求：合并输出，总字数控制在 100 字以内，干货为主。`;
-                    
                     let newNote = "";
                     let baseUrl = config.baseUrl.replace(/\/$/, "");
                     if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel")) baseUrl += "/v1";
-
-                    const res = await fetch(`${baseUrl}/chat/completions`, { 
-                        method: 'POST', 
-                        headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${config.apiKey}`}, 
-                        body: JSON.stringify({model:config.model, messages:[{role:"user",content:prompt}]}) 
-                    }); 
-                    const data = await res.json(); 
-                    newNote = data.choices?.[0]?.message?.content;
-                    
+                    const res = await fetch(`${baseUrl}/chat/completions`, { method: 'POST', headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${config.apiKey}`}, body: JSON.stringify({model:config.model, messages:[{role:"user",content:prompt}]}) }); 
+                    const data = await res.json(); newNote = data.choices?.[0]?.message?.content;
                     if(newNote) { 
-                        const s = newNote.trim(); 
-                        const newWords = [...words]; 
-                        const targetWord = newWords.find(w => w.id === currentCard.id);
+                        const s = newNote.trim(); const newWords = [...words]; const targetWord = newWords.find(w => w.id === currentCard.id);
                         if(targetWord) targetWord.aiNote = s;
-                        setWords(newWords); 
-                        localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); 
-                        const newQueue = [...queue]; 
-                        newQueue[currentIdx].aiNote = s; 
-                        setQueue(newQueue); 
+                        setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); 
+                        const newQueue = [...queue]; newQueue[currentIdx].aiNote = s; setQueue(newQueue); 
                     }
                 } catch(e){ alert("生成失败: " + e.message); } finally { setIsGeneratingNote(false); }
             };
 
-            // 🔥 长难句手术刀功能
+            // 🔥 修复后的长难句功能：抛弃表格，使用列表和卡片
             const performSyntaxSurgery = async (e) => {
                 e.stopPropagation();
                 if (!config.apiKey) return alert("请先配置 API Key");
                 setSyntaxLoading(true);
                 setSyntaxModal({ open: true, content: '' });
 
-                const prompt = `请作为考研英语专家，用单词 "${currentCard.word}" 造一个**考研真题难度**的长难句（至少25个词，包含从句或非谓语结构）。
-                然后进行【语法手术刀】分析，必须使用 Markdown 表格形式输出。
-                
-                输出格式要求：
-                ### 🧬 考研长难句
-                (这里写英文句子，**${currentCard.word}** 加粗)
-                (这里写中文翻译)
+                // 优化 Prompt：禁止使用复杂表格，改用清晰的层级列表
+                const prompt = `请作为考研英语专家，用单词 "${currentCard.word}" 造一个**考研真题难度**的长难句（约30词）。
+                然后进行【语法手术刀】分析。为了在手机上阅读清晰，**严禁使用 Markdown 表格**，请严格使用以下格式：
 
-                ### 🔪 结构解剖台
-                | 核心成分 | 内容 |
-                |---|---|
-                | **主句骨架** | (主语+谓语+宾语) |
-                | **修饰成分** | (定语从句/状语/插入语等) |
-                | **语法考点** | (简述涉及的语法点，如倒装、虚拟、独立主格) |
+                ### 🧬 考研长难句
+                > (这里写英文句子，将 **${currentCard.word}** 加粗)
                 
-                ### 🧠 逻辑图解
-                (用简单的缩进列表展示句子层次)
+                (这里写中文翻译，灰色字体)
+
+                ---
+
+                ### 🦴 核心骨架 (主干)
+                * **主语**：...
+                * **谓语**：...
+                * **宾语**：...
+
+                ### 🍃 修饰成分 (皮肉)
+                * **定语从句**：(摘录从句)... -> 修饰 (先行词)
+                * **状语**：(摘录)... -> 表示 (时间/原因等)
+                * **插入语/同位语**：...
+
+                ### 💡 语法考点
+                1.  **点 1**：(解释)
+                2.  **点 2**：(解释)
                 `;
 
                 try {
@@ -1068,7 +1059,9 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     )}
                 </div>
             );
-        };
+        };             
+            
+                                        
         
       const ImportExport = ({ setWords, words, setView, config }) => {
             const [activeTab, setActiveTab] = useState('data');
