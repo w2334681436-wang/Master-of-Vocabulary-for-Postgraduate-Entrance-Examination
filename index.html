@@ -183,10 +183,15 @@
         };
 
 const WordChat = ({ word, words, setWords, onClose, config }) => {
-            // 🔥 状态升级：增加 highlightColor
+            // 🔥 1. 状态升级：从本地存储加载“颜色历史列表”
+            const [bgColors, setBgColors] = useState(JSON.parse(localStorage.getItem('kaoyan_hist_bg')) || ["#4f46e5", "#ec4899", "#10b981", "#f97316", "#000000", "#ffffff"]);
+            const [textColors, setTextColors] = useState(JSON.parse(localStorage.getItem('kaoyan_hist_text')) || ["#ffffff", "#000000", "#fef3c7", "#dbeafe"]);
+            const [hlColors, setHlColors] = useState(JSON.parse(localStorage.getItem('kaoyan_hist_hl')) || ["#fbbf24", "#f87171", "#4ade80", "#60a5fa"]);
+
+            // 当前选中的颜色
             const [bubbleColor, setBubbleColor] = useState(localStorage.getItem('kaoyan_chat_bg') || "#4f46e5");
             const [textColor, setTextColor] = useState(localStorage.getItem('kaoyan_chat_text') || "#ffffff");
-            const [highlightColor, setHighlightColor] = useState(localStorage.getItem('kaoyan_chat_hl') || "#fbbf24"); // 默认还是黄色，但在深色气泡上好看
+            const [highlightColor, setHighlightColor] = useState(localStorage.getItem('kaoyan_chat_hl') || "#fbbf24");
 
             const [messages, setMessages] = useState([]);
             const [input, setInput] = useState("");
@@ -196,10 +201,6 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
             const [playingIdx, setPlayingIdx] = useState(null);
             const audioRef = useRef(null);
 
-            const bgPresets = ["#4f46e5", "#ec4899", "#10b981", "#f97316", "#000000", "#ffffff"];
-            const textPresets = ["#ffffff", "#000000", "#fef3c7", "#dbeafe"];
-            const hlPresets = ["#fbbf24", "#f87171", "#4ade80", "#60a5fa", "#000000", "#ffffff"]; // 高亮预设
-            
             const magicPrompt = `请你作为专业的英语词汇教师，为考研学生提供单词 "${word}" 的深度解析服务。需要将每个单词进行全方位、多维度、深层次的剖析，确保学生能够真正理解、印象深刻并能够灵活运用。
 
 风格与语气要求
@@ -300,17 +301,30 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
             };
 
-            const handleColorChange = (type, color) => {
+            // 🔥 核心升级：更新颜色并保存到历史列表
+            const updateColorState = (type, color) => {
+                let newList, key;
                 if (type === 'bg') {
                     setBubbleColor(color);
                     localStorage.setItem('kaoyan_chat_bg', color);
+                    // 把新颜色插到最前面，并去重，只保留最近 8 个
+                    newList = [color, ...bgColors.filter(c => c !== color)].slice(0, 8);
+                    setBgColors(newList);
+                    key = 'kaoyan_hist_bg';
                 } else if (type === 'text') {
                     setTextColor(color);
                     localStorage.setItem('kaoyan_chat_text', color);
+                    newList = [color, ...textColors.filter(c => c !== color)].slice(0, 8);
+                    setTextColors(newList);
+                    key = 'kaoyan_hist_text';
                 } else {
                     setHighlightColor(color);
                     localStorage.setItem('kaoyan_chat_hl', color);
+                    newList = [color, ...hlColors.filter(c => c !== color)].slice(0, 8);
+                    setHlColors(newList);
+                    key = 'kaoyan_hist_hl';
                 }
+                localStorage.setItem(key, JSON.stringify(newList));
             };
 
             const handleResetChat = () => {
@@ -455,7 +469,6 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
 
             return (
                 <div className="fixed inset-0 z-[60] flex flex-col bg-white md:fixed md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[90vw] md:max-w-4xl md:h-[85vh] md:rounded-2xl md:shadow-2xl md:border md:border-gray-200 overflow-hidden animate-fade-in">
-                    {/* 🔥 动态注入高亮样式 */}
                     <style>{`.chat-content strong { color: ${highlightColor} !important; background: rgba(255,255,255,0.15); padding: 0 3px; border-radius: 3px; }`}</style>
 
                     <div className="flex justify-between items-center p-4 border-b bg-white z-10 shadow-sm flex-shrink-0">
@@ -468,26 +481,41 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                             <div className="relative">
                                 <button onClick={()=>setShowColorPicker(!showColorPicker)} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 transition"><Icon name="Palette" size={20}/></button>
                                 {showColorPicker && (
-                                    <div className="absolute right-0 top-10 bg-white shadow-xl border rounded-xl p-4 w-64 z-50 animate-fade-in space-y-4 h-80 overflow-y-auto custom-scroll">
+                                    <div className="absolute right-0 top-10 bg-white shadow-xl border rounded-xl p-4 w-72 z-50 animate-fade-in space-y-5 h-96 overflow-y-auto custom-scroll">
+                                        {/* 背景颜色 */}
                                         <div>
-                                            <div className="text-xs text-gray-400 mb-2 font-bold">气泡背景 (Bubble)</div>
-                                            <div className="grid grid-cols-6 gap-2">
-                                                {bgPresets.map(c => (<div key={c} onClick={()=>handleColorChange('bg', c)} className="w-6 h-6 rounded-full cursor-pointer border border-gray-200 shadow-sm hover:scale-110 transition" style={{backgroundColor: c}}></div>))}
-                                                <label className="w-6 h-6 rounded-full cursor-pointer border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-400"><input type="color" className="opacity-0 w-full h-full absolute cursor-pointer" onChange={(e)=>handleColorChange('bg', e.target.value)}/>+</label>
+                                            <div className="text-xs text-gray-400 mb-2 font-bold flex justify-between">气泡背景 <span>Bubble</span></div>
+                                            <div className="grid grid-cols-7 gap-2">
+                                                {bgColors.map((c, i) => (
+                                                    <div key={i} onClick={()=>updateColorState('bg', c)} className={`w-7 h-7 rounded-full cursor-pointer border shadow-sm hover:scale-110 transition ${bubbleColor === c ? 'ring-2 ring-indigo-500 ring-offset-1' : 'border-gray-200'}`} style={{backgroundColor: c}}></div>
+                                                ))}
+                                                <label className="w-7 h-7 rounded-full cursor-pointer border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-400 text-xs">
+                                                    <input type="color" className="opacity-0 w-full h-full absolute cursor-pointer" onChange={(e)=>updateColorState('bg', e.target.value)}/>+
+                                                </label>
                                             </div>
                                         </div>
+                                        {/* 文字颜色 */}
                                         <div>
-                                            <div className="text-xs text-gray-400 mb-2 font-bold">文字颜色 (Text)</div>
-                                            <div className="grid grid-cols-6 gap-2">
-                                                {textPresets.map(c => (<div key={c} onClick={()=>handleColorChange('text', c)} className="w-6 h-6 rounded-full cursor-pointer border border-gray-200 shadow-sm hover:scale-110 transition" style={{backgroundColor: c}}></div>))}
-                                                <label className="w-6 h-6 rounded-full cursor-pointer border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-400"><input type="color" className="opacity-0 w-full h-full absolute cursor-pointer" onChange={(e)=>handleColorChange('text', e.target.value)}/>+</label>
+                                            <div className="text-xs text-gray-400 mb-2 font-bold flex justify-between">文字颜色 <span>Text</span></div>
+                                            <div className="grid grid-cols-7 gap-2">
+                                                {textColors.map((c, i) => (
+                                                    <div key={i} onClick={()=>updateColorState('text', c)} className={`w-7 h-7 rounded-full cursor-pointer border shadow-sm hover:scale-110 transition ${textColor === c ? 'ring-2 ring-indigo-500 ring-offset-1' : 'border-gray-200'}`} style={{backgroundColor: c}}></div>
+                                                ))}
+                                                <label className="w-7 h-7 rounded-full cursor-pointer border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-400 text-xs">
+                                                    <input type="color" className="opacity-0 w-full h-full absolute cursor-pointer" onChange={(e)=>updateColorState('text', e.target.value)}/>+
+                                                </label>
                                             </div>
                                         </div>
+                                        {/* 高亮颜色 */}
                                         <div>
-                                            <div className="text-xs text-gray-400 mb-2 font-bold">重点高亮 (Highlight)</div>
-                                            <div className="grid grid-cols-6 gap-2">
-                                                {hlPresets.map(c => (<div key={c} onClick={()=>handleColorChange('hl', c)} className="w-6 h-6 rounded-full cursor-pointer border border-gray-200 shadow-sm hover:scale-110 transition" style={{backgroundColor: c}}></div>))}
-                                                <label className="w-6 h-6 rounded-full cursor-pointer border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-400"><input type="color" className="opacity-0 w-full h-full absolute cursor-pointer" onChange={(e)=>handleColorChange('hl', e.target.value)}/>+</label>
+                                            <div className="text-xs text-gray-400 mb-2 font-bold flex justify-between">重点高亮 <span>Highlight</span></div>
+                                            <div className="grid grid-cols-7 gap-2">
+                                                {hlColors.map((c, i) => (
+                                                    <div key={i} onClick={()=>updateColorState('hl', c)} className={`w-7 h-7 rounded-full cursor-pointer border shadow-sm hover:scale-110 transition ${highlightColor === c ? 'ring-2 ring-indigo-500 ring-offset-1' : 'border-gray-200'}`} style={{backgroundColor: c}}></div>
+                                                ))}
+                                                <label className="w-7 h-7 rounded-full cursor-pointer border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-400 text-xs">
+                                                    <input type="color" className="opacity-0 w-full h-full absolute cursor-pointer" onChange={(e)=>updateColorState('hl', e.target.value)}/>+
+                                                </label>
                                             </div>
                                         </div>
                                     </div>
