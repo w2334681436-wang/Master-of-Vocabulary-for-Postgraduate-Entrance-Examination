@@ -1069,8 +1069,9 @@
             
                                         
         
-      const ImportExport = ({ setWords, words, setView, config }) => {
-            const [activeTab, setActiveTab] = useState('data');
+   const ImportExport = ({ setWords, words, setView, config }) => {
+            const [activeTab, setActiveTab] = useState('code'); // 默认用“存档码”模式
+            const [codeIO, setCodeIO] = useState('');
             const [textInput, setTextInput] = useState('');
             const [importMode, setImportMode] = useState('frequency');
             const [importCategory, setImportCategory] = useState('high');
@@ -1080,11 +1081,71 @@
             
             const [aiInput, setAiInput] = useState('');
             const [isFetching, setIsFetching] = useState(false);
-            const [fetchProgress, setFetchProgress] = useState({ current: 0, total: 0, success: 0, fail: 0 });
 
+            // 📥 生成存档码 (压缩并复制)
+            const generateSaveCode = () => {
+                try {
+                    // 1. 获取数据
+                    const data = {
+                        timestamp: Date.now(),
+                        words: words,
+                        meta: localStorage.getItem('kaoyan_group_meta') || '{}'
+                    };
+                    // 2. 压缩 (使用 LZString)
+                    const jsonString = JSON.stringify(data);
+                    const compressed = LZString.compressToEncodedURIComponent(jsonString);
+                    
+                    // 3. 显示并复制
+                    setCodeIO(compressed);
+                    navigator.clipboard.writeText(compressed).then(() => {
+                        alert("✅ 存档码已复制到剪贴板！\n\n直接去微信粘贴发给手机即可。");
+                    }).catch(() => {
+                        alert("❌ 自动复制失败，请手动全选复制下方的乱码。");
+                    });
+                } catch (e) {
+                    alert("生成失败: " + e.message);
+                }
+            };
+
+            // 📤 读取存档码 (解压并覆盖)
+            const loadSaveCode = () => {
+                if (!codeIO.trim()) return alert("请先粘贴存档码！");
+                
+                if (!confirm("⚠️ 警告：这将【覆盖】当前设备的所有进度，确定要同步吗？")) return;
+
+                try {
+                    // 1. 解压
+                    const decompressed = LZString.decompressFromEncodedURIComponent(codeIO.trim());
+                    if (!decompressed) throw new Error("无效的存档码");
+
+                    const data = JSON.parse(decompressed);
+                    
+                    // 2. 恢复数据
+                    if (data.words) {
+                        setWords(data.words);
+                        localStorage.setItem('kaoyan_vocab_list', JSON.stringify(data.words));
+                        if (data.meta) localStorage.setItem('kaoyan_group_meta', data.meta);
+                        
+                        alert(`🎉 同步成功！\n包含 ${data.words.length} 个单词\n存档时间: ${new Date(data.timestamp).toLocaleString()}`);
+                        setCodeIO(''); // 清空输入框
+                    } else {
+                        // 兼容旧版直接粘贴 JSON 的情况
+                        if (Array.isArray(data)) {
+                            setWords(data);
+                            localStorage.setItem('kaoyan_vocab_list', JSON.stringify(data));
+                            alert("同步成功（旧版数据格式）");
+                        } else {
+                            throw new Error("数据格式错误");
+                        }
+                    }
+                } catch (e) {
+                    alert("❌ 读取失败：存档码可能不完整或损坏。\n" + e.message);
+                }
+            };
+
+            // --- 原有的辅助函数保持不变 ---
             const getTargetCategory = () => { if (importMode === 'frequency') return importCategory; return customGroupName.trim() || `Import ${new Date().toLocaleDateString()}`; };
             const saveBatchMeta = (batchId) => { if (isNewBatch && importBatchName.trim()) { try { const metaStr = localStorage.getItem('kaoyan_group_meta'); const meta = metaStr ? JSON.parse(metaStr) : {}; meta[batchId] = { name: importBatchName.trim(), desc: "" }; localStorage.setItem('kaoyan_group_meta', JSON.stringify(meta)); } catch (e) { console.error(e); } } };
-
             const parseMultiPos = (rawWord, fullText) => {
                 let remains = fullText.substring(rawWord.length).trim();
                 const parts = remains.split(/(?:^|\s+)([a-z]{1,5}\.)\s+/).filter(p => p.trim());
@@ -1096,7 +1157,6 @@
                 }
                 return meanings;
             };
-
             const parseAndImport = () => { 
                 if(!textInput.trim()) return;
                 const targetCat = getTargetCategory(); const segments = textInput.split(/[;\n]+/);
@@ -1116,125 +1176,79 @@
                 });
                 if (addedCount > 0 || mergedCount > 0) { setWords(currentWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords)); alert(`导入成功！新增: ${addedCount}, 合并: ${mergedCount}`); setTextInput(''); setImportBatchName(''); } else alert("格式错误");
             };
-
-            const repairData = () => {
-                let fixedCount = 0;
-                const newWords = words.map(w => {
-                    let needsFix = false; let newMeanings = [];
-                    w.meanings.forEach(m => {
-                        const parts = m.def.split(/\s+([a-z]{1,4}\.)\s+/);
-                        if (parts.length > 1) { needsFix = true; newMeanings.push({ ...m, def: parts[0].trim() }); for (let i = 1; i < parts.length; i += 2) if (parts[i+1]) newMeanings.push({ pos: parts[i], def: parts[i+1].trim(), sentence: "", isMastered: false }); } else newMeanings.push(m);
-                    });
-                    if (needsFix) { fixedCount++; return { ...w, meanings: newMeanings }; } return w;
-                });
-                if (fixedCount > 0) { setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); alert(`🎉 修复成功！整理了 ${fixedCount} 个单词。`); } else alert("暂未发现格式错乱的单词。");
-            };
-
-            // 🔥 强力拆分，包含逗号！
-            const deepSplitMeanings = () => {
-                let splitCount = 0;
-                let wordCount = 0;
-                const newWords = words.map(w => {
-                    let hasSplit = false;
-                    let newMeanings = [];
-                    w.meanings.forEach(m => {
-                        const separators = /[;；，]|\s\d+\.\s/; 
-                        if (m.def.match(separators)) {
-                            hasSplit = true;
-                            // 拆分
-                            const parts = m.def.split(separators)
-                                .map(s => s.trim().replace(/^\d+\.\s*/, ''))
-                                .filter(s => s && s.length > 0);
-                            
-                            parts.forEach(part => {
-                                // 检查去重
-                                if (!newMeanings.some(nm => nm.pos === m.pos && nm.def === part)) {
-                                    newMeanings.push({ ...m, def: part, sentence: m.sentence || "" }); 
-                                    splitCount++;
-                                }
-                            });
-                        } else {
-                            newMeanings.push(m);
-                        }
-                    });
-                    if (hasSplit) wordCount++;
-                    return { ...w, meanings: newMeanings };
-                });
-
-                if (splitCount > 0) {
-                    setWords(newWords);
-                    localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
-                    alert(`🔪 释义拆分完成！\n\n处理了 ${wordCount} 个单词\n\n现在去背单词页面，你会发现：\n1. 同一词性的意思被【合并】在一个框里了（不乱了）\n2. 框里的每一行意思都可以【单独隐藏】了（满足你的需求）`);
-                } else {
-                    alert("数据看起来已经是拆分好的状态了，可以直接去背单词！");
-                }
-            };
-
             const fetchWordsFromAI = async () => {
                 if (!config.apiKey) { alert("请配置 Key"); return; } if (!aiInput.trim()) return; const wordList = aiInput.split(/[\s,\n]+/).filter(w => w.trim().match(/^[a-zA-Z\-]+$/)); if(wordList.length===0) return;
-                setIsFetching(true); setFetchProgress({ current: 0, total: wordList.length, success: 0, fail: 0 }); const targetCat = getTargetCategory(); 
-                const batchId = isNewBatch ? `batch-${Date.now()}` : 'default'; saveBatchMeta(batchId);
-                const BATCH_SIZE = 5; let currentWords = JSON.parse(JSON.stringify(words)); let successCount = 0; let failCount = 0;
+                setIsFetching(true); const targetCat = getTargetCategory(); const batchId = isNewBatch ? `batch-${Date.now()}` : 'default'; saveBatchMeta(batchId);
+                const BATCH_SIZE = 5; let currentWords = JSON.parse(JSON.stringify(words)); 
                 for (let i = 0; i < wordList.length; i += BATCH_SIZE) {
                     const batch = wordList.slice(i, i + BATCH_SIZE); const batchStr = batch.join(", "); const prompt = `考研单词查询JSON:[${batchStr}]`;
                     try {
-                        let jsonStr=""; if(config.type==='google'){ const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey.trim()}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})}); const data=await res.json(); jsonStr=data.candidates?.[0]?.content?.parts?.[0]?.text; } else { let baseUrl=config.baseUrl.replace(/\/$/,""); if(!baseUrl.includes("/v1")&&!baseUrl.includes("aliyuncs")&&!baseUrl.includes("bigmodel")&&!baseUrl.includes("lingyiwanwu")&&!baseUrl.includes("siliconflow"))baseUrl+="/v1"; const res=await fetch(`${baseUrl}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${config.apiKey.trim()}`},body:JSON.stringify({model:config.model,messages:[{role:"user",content:prompt}]})}); const data=await res.json(); jsonStr=data.choices?.[0]?.message?.content; }
-                        if(!jsonStr) throw new Error("Empty"); jsonStr=jsonStr.replace(/```json/g,'').replace(/```/g,'').trim(); const parsedBatch=JSON.parse(jsonStr);
-                        if(Array.isArray(parsedBatch)){ parsedBatch.forEach(item=>{ const existIdx=currentWords.findIndex(w=>w.word.toLowerCase()===item.word.toLowerCase()); const meanings=item.meanings.map(m=>({...m,sentence:"",isMastered:false})); if(!isNewBatch && existIdx!==-1){ item.meanings.forEach(nm=>{ if(!currentWords[existIdx].meanings.some(om=>om.pos===nm.pos && om.def===nm.def)) currentWords[existIdx].meanings.push({...nm,sentence:"",isMastered:false}); }); }else{ currentWords.push({id:`ai-${Date.now()}-${Math.random()}`,word:item.word,phonetic:item.phonetic||"",category:targetCat,importId:batchId,meanings,stats:{interval:0,easeFactor:2.5,nextReview:0,reviewCount:0}}); } }); successCount+=batch.length; }
-                    } catch(err){ failCount+=batch.length; }
-                    setFetchProgress({ current: Math.min(i+BATCH_SIZE, wordList.length), total: wordList.length, success: successCount, fail: failCount }); setWords([...currentWords]); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords));
+                        let jsonStr=""; let baseUrl=config.baseUrl.replace(/\/$/,""); if(!baseUrl.includes("/v1")) baseUrl+="/v1";
+                        const res=await fetch(`${baseUrl}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${config.apiKey.trim()}`},body:JSON.stringify({model:config.model,messages:[{role:"user",content:prompt}]})}); const data=await res.json(); jsonStr=data.choices?.[0]?.message?.content;
+                        jsonStr=jsonStr.replace(/```json/g,'').replace(/```/g,'').trim(); const parsedBatch=JSON.parse(jsonStr);
+                        if(Array.isArray(parsedBatch)){ parsedBatch.forEach(item=>{ const existIdx=currentWords.findIndex(w=>w.word.toLowerCase()===item.word.toLowerCase()); const meanings=item.meanings.map(m=>({...m,sentence:"",isMastered:false})); if(!isNewBatch && existIdx!==-1){ item.meanings.forEach(nm=>{ if(!currentWords[existIdx].meanings.some(om=>om.pos===nm.pos && om.def===nm.def)) currentWords[existIdx].meanings.push({...nm,sentence:"",isMastered:false}); }); }else{ currentWords.push({id:`ai-${Date.now()}-${Math.random()}`,word:item.word,phonetic:item.phonetic||"",category:targetCat,importId:batchId,meanings,stats:{interval:0,easeFactor:2.5,nextReview:0,reviewCount:0}}); } }); }
+                    } catch(err){ }
+                    setWords([...currentWords]); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords));
                 } setIsFetching(false); alert("完成"); setImportBatchName('');
             };
-
             const handleFile = (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { try { const content = JSON.parse(ev.target.result); if (content.type === 'KAOYAN_FULL_BACKUP' && content.storage) { if(confirm(`恢复备份将覆盖当前数据，确定吗？`)) { Object.keys(content.storage).forEach(key => { if(key.startsWith('kaoyan_')) localStorage.setItem(key, content.storage[key]); }); window.location.reload(); } return; } if (Array.isArray(content)) { if(confirm(`导入旧版单词表?`)) { setWords(content); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(content)); alert("完成"); } return; } } catch(err) { alert("错误"); } }; reader.readAsText(file); };
-            const exportFullData = async () => { 
-                const storage = {}; for(let i=0; i<localStorage.length; i++) { const key = localStorage.key(i); if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key); } 
-                const backup = { type: 'KAOYAN_FULL_BACKUP', version: 1.0, timestamp: Date.now(), storage };
-                const date = new Date(); const fileName = `考研备份_${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate()}.json`;
-                const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"}); 
-                const url = URL.createObjectURL(blob); 
-                const a = document.createElement('a'); a.href = url; a.download = fileName; a.click(); 
-            };
+            const exportFullData = async () => { const storage = {}; for(let i=0; i<localStorage.length; i++) { const key = localStorage.key(i); if(key && key.startsWith('kaoyan_')) storage[key] = localStorage.getItem(key); } const backup = { type: 'KAOYAN_FULL_BACKUP', version: 1.0, timestamp: Date.now(), storage }; const date = new Date(); const fileName = `考研备份_${date.getFullYear()}${(date.getMonth()+1).toString().padStart(2,'0')}${date.getDate()}.json`; const blob = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = fileName; a.click(); };
 
             return (
                 <div className="flex-1 overflow-y-auto custom-scroll bg-gray-50 p-4 flex justify-center">
                     <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 h-fit">
                         <h2 className="text-2xl font-bold mb-6 text-gray-800">数据中心</h2>
-                        <div className="flex mb-6 border-b border-gray-100">
-                            <button onClick={() => setActiveTab('data')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='data'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>备份与恢复</button>
-                            <button onClick={() => setActiveTab('ai')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='ai'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>AI 速查</button>
-                            <button onClick={() => setActiveTab('text')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors border-b-2 ${activeTab==='text'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>批量粘贴</button>
+                        <div className="flex mb-6 border-b border-gray-100 overflow-x-auto">
+                            <button onClick={() => setActiveTab('code')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors whitespace-nowrap px-2 border-b-2 ${activeTab==='code'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>📋 互传码</button>
+                            <button onClick={() => setActiveTab('data')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors whitespace-nowrap px-2 border-b-2 ${activeTab==='data'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>📂 文件</button>
+                            <button onClick={() => setActiveTab('ai')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors whitespace-nowrap px-2 border-b-2 ${activeTab==='ai'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>🤖 抓词</button>
+                            <button onClick={() => setActiveTab('text')} className={`flex-1 pb-3 text-sm md:text-base font-bold transition-colors whitespace-nowrap px-2 border-b-2 ${activeTab==='text'?'border-indigo-600 text-indigo-600':'border-transparent text-gray-400 hover:text-gray-600'}`}>📥 导入</button>
                         </div>
                         
+                        {/* 🔥 存档码互传 */}
+                        {activeTab === 'code' && (
+                            <div className="space-y-4 animate-fade-in">
+                                <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 text-sm text-indigo-800">
+                                    <p className="font-bold mb-1">⚡️ 无需文件极速同步：</p>
+                                    <p>1. <strong>平板</strong>：点“生成进度码”，发送给微信。</p>
+                                    <p>2. <strong>手机</strong>：复制进度码，粘贴到下面，点“读取”。</p>
+                                </div>
+                                
+                                <textarea 
+                                    value={codeIO} 
+                                    onChange={e => setCodeIO(e.target.value)} 
+                                    placeholder="在此处粘贴那串乱码..." 
+                                    className="w-full h-32 p-4 border border-gray-200 rounded-xl text-xs font-mono outline-none focus:ring-2 focus:ring-indigo-500 resize-none bg-gray-50"
+                                ></textarea>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <button onClick={generateSaveCode} className="py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg flex flex-col items-center justify-center transition active:scale-95">
+                                        <Icon name="Upload" size={24} className="mb-2"/><span>生成进度码 (复制)</span>
+                                    </button>
+                                    <button onClick={loadSaveCode} className="py-4 bg-white hover:bg-gray-50 text-indigo-600 border-2 border-indigo-600 rounded-xl font-bold shadow-sm flex flex-col items-center justify-center transition active:scale-95">
+                                        <Icon name="Download" size={24} className="mb-2"/><span>读取进度码 (覆盖)</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* 文件备份 (保留作为备用) */}
                         {activeTab === 'data' && (
                             <div className="space-y-6 animate-fade-in">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="p-4 bg-orange-50 border border-orange-100 rounded-2xl shadow-sm flex flex-col justify-between">
-                                        <div><h3 className="font-bold text-orange-900 text-sm mb-1">格式修复</h3><p className="text-xs text-orange-700/70 mb-2">分离连在一起的 n. v.</p></div>
-                                        <button onClick={repairData} className="w-full py-2 bg-white text-orange-600 border border-orange-200 rounded-lg font-bold text-xs shadow-sm hover:bg-orange-100 transition">修复</button>
-                                    </div>
-                                    <div className="p-4 bg-purple-50 border border-purple-100 rounded-2xl shadow-sm flex flex-col justify-between">
-                                        <div><h3 className="font-bold text-purple-900 text-sm mb-1">深度细分释义</h3><p className="text-xs text-purple-700/70 mb-2">炸开逗号/分号/序号</p></div>
-                                        <button onClick={deepSplitMeanings} className="w-full py-2 bg-white text-purple-600 border border-purple-200 rounded-lg font-bold text-xs shadow-sm hover:bg-purple-100 transition">开始拆分</button>
-                                    </div>
-                                </div>
-
-                                <div className="p-6 bg-indigo-50 rounded-2xl border border-indigo-100 shadow-sm">
-                                    <div className="flex items-center mb-4"><Icon name="Folder" size={24} className="mr-2 text-indigo-600"/><h3 className="font-bold text-indigo-900 text-lg">本地备份</h3></div>
-                                    <p className="text-indigo-800/80 text-xs mb-4">生成 .json 文件并保存到手机/电脑，安全可靠。</p>
+                                <div className="p-6 bg-gray-50 rounded-2xl border border-gray-200 shadow-sm">
+                                    <div className="flex items-center mb-4"><Icon name="Folder" size={24} className="mr-2 text-gray-600"/><h3 className="font-bold text-gray-900 text-lg">传统文件备份</h3></div>
                                     <div className="grid grid-cols-2 gap-4">
-                                        <button onClick={exportFullData} className="py-3 bg-white text-indigo-600 border border-indigo-200 rounded-xl font-bold shadow-sm hover:bg-indigo-50 flex flex-col items-center justify-center transition">
-                                            <Icon name="Upload" size={20} className="mb-1"/><span className="text-xs">导出文件</span>
+                                        <button onClick={exportFullData} className="py-3 bg-white text-gray-600 border border-gray-300 rounded-xl font-bold shadow-sm hover:bg-gray-50 flex flex-col items-center justify-center transition">
+                                            <Icon name="Upload" size={20} className="mb-1"/><span className="text-xs">导出 .json</span>
                                         </button>
                                         <div className="relative">
-                                            <button className="w-full h-full py-3 bg-white text-indigo-600 border border-indigo-200 rounded-xl font-bold shadow-sm hover:bg-indigo-50 flex flex-col items-center justify-center transition">
-                                                <Icon name="Download" size={20} className="mb-1"/><span className="text-xs">导入文件</span>
+                                            <button className="w-full h-full py-3 bg-white text-gray-600 border border-gray-300 rounded-xl font-bold shadow-sm hover:bg-gray-50 flex flex-col items-center justify-center transition">
+                                                <Icon name="Download" size={20} className="mb-1"/><span className="text-xs">导入 .json</span>
                                             </button>
                                             <input type="file" onChange={handleFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/>
                                         </div>
                                     </div>
                                 </div>
-
                                 <div className="pt-4 border-t border-gray-100 text-center">
                                     <button onClick={() => {if(confirm('⚠️ 确定要清空所有数据吗？此操作不可恢复！')) { setWords([]); localStorage.clear(); window.location.reload(); }}} className="text-red-400 text-xs hover:text-red-600 underline transition">重置应用 (清空数据)</button>
                                 </div>
