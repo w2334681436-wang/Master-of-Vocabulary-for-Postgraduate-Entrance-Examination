@@ -61,53 +61,37 @@
 
  <div id="cache-status">📡 正在检查离线资源... (请保持网络畅通)</div>
 
+  <div id="cache-status" style="position: fixed; top: 0; left: 0; right: 0; background: #333; color: white; font-size: 12px; padding: 8px; text-align: center; z-index: 9999; display: none;"></div>
+
     <script>
         // 1. 错误捕获
         window.onerror = function(msg, url, line, col, error) {
             var root = document.getElementById('root');
             if(root && !root.innerHTML.includes('发生错误')) {
-                root.innerHTML = '<div style="padding:20px;text-align:center;color:red;"><h3>启动失败</h3><p>'+msg+'</p><p>请检查网络或刷新页面</p></div>';
+                // 忽略一些无关痛痒的警告
+                if(msg.includes('ResizeObserver')) return;
+                console.error(msg);
             }
         };
 
-        // 更新状态条的工具函数
-        function updateStatus(msg, type) {
+        function showToast(msg, type) {
             const el = document.getElementById('cache-status');
             if(el) {
+                el.style.display = 'block';
                 el.textContent = msg;
-                if(type === 'success') {
-                    el.style.backgroundColor = '#10b981'; // 绿色
-                    setTimeout(() => el.classList.add('hidden'), 3000); // 3秒后隐藏
-                } else if (type === 'error') {
-                    el.style.backgroundColor = '#ef4444'; // 红色
-                }
+                el.style.backgroundColor = type === 'success' ? '#10b981' : (type === 'error' ? '#ef4444' : '#333');
+                if(type === 'success') setTimeout(() => el.style.display = 'none', 5000);
             }
         }
 
-        // 2. 强力离线缓存引擎
+        // 2. 容错版离线引擎
         if ('serviceWorker' in navigator) {
             const swCode = `
-                const CACHE_NAME = 'kaoyan-offline-v5';
-                const URLS_TO_CACHE = [
-                    './',
-                    './index.html',
-                    'https://cdn.tailwindcss.com',
-                    'https://cdn.staticfile.net/react/18.2.0/umd/react.production.min.js',
-                    'https://cdn.staticfile.net/react-dom/18.2.0/umd/react-dom.production.min.js',
-                    'https://cdn.staticfile.net/babel-standalone/7.23.5/babel.min.js',
-                    'https://cdn.staticfile.net/marked/9.1.2/marked.min.js',
-                    'https://cdn.staticfile.net/lz-string/1.4.4/lz-string.min.js',
-                    'https://cdn.staticfile.net/twemoji/14.0.2/72x72/1f4da.png'
-                ];
+                const CACHE_NAME = 'kaoyan-runtime-v6';
 
+                // 安装阶段：什么都不做，直接通过！防止因为网络问题导致启动失败
                 self.addEventListener('install', event => {
                     self.skipWaiting();
-                    event.waitUntil(
-                        caches.open(CACHE_NAME).then(cache => {
-                            // 暴力缓存：强制下载核心库
-                            return cache.addAll(URLS_TO_CACHE);
-                        })
-                    );
                 });
 
                 self.addEventListener('activate', event => {
@@ -115,23 +99,33 @@
                 });
 
                 self.addEventListener('fetch', event => {
-                    // API 请求不缓存
-                    if (event.request.url.includes('/chat/completions') || event.request.url.includes('api.')) {
-                        return;
-                    }
+                    // 只处理 http/https 请求
+                    if (!event.request.url.startsWith('http')) return;
                     
+                    // API 请求直接放行，不缓存
+                    if (event.request.url.includes('/chat/completions') || event.request.url.includes('api.')) return;
+
                     event.respondWith(
-                        caches.match(event.request).then(response => {
-                            // 缓存命中：直接返回（秒开）
-                            if (response) return response;
-                            
-                            // 缓存未命中：去网络下载并存入缓存
-                            return fetch(event.request).then(networkResponse => {
-                                if (networkResponse && networkResponse.status === 200 && event.request.method === 'GET' && event.request.url.startsWith('http')) {
-                                    const responseClone = networkResponse.clone();
-                                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseClone));
+                        caches.match(event.request).then(cachedResponse => {
+                            // 1. 如果有缓存，直接返回（秒开）
+                            if (cachedResponse) return cachedResponse;
+
+                            // 2. 没缓存，去网络拉取
+                            return fetch(event.request).then(response => {
+                                // 检查响应是否有效
+                                if(!response || response.status !== 200 || response.type !== 'basic' && response.type !== 'cors') {
+                                    return response;
                                 }
-                                return networkResponse;
+
+                                // 3. 拉取成功后，克隆一份存入缓存（下次就有了）
+                                const responseToCache = response.clone();
+                                caches.open(CACHE_NAME).then(cache => {
+                                    cache.put(event.request, responseToCache);
+                                });
+
+                                return response;
+                            }).catch(err => {
+                                // 网络失败且无缓存时，静默失败，不崩坏页面
                             });
                         })
                     );
@@ -142,29 +136,22 @@
             const swUrl = URL.createObjectURL(blob);
             
             window.addEventListener('load', () => {
+                // 注册 SW
                 navigator.serviceWorker.register(swUrl)
                     .then(registration => {
                         console.log('SW Registered');
-                        // 检查是否已经控制页面
-                        if (navigator.serviceWorker.controller) {
-                            updateStatus('🟢 离线资源已就绪！下次可断网使用', 'success');
+                        // 检查是否是首次加载
+                        if (!navigator.serviceWorker.controller) {
+                            showToast('📡 首次加载：请保持 VPN 开启，直到图标显示正常', 'loading');
                         } else {
-                            updateStatus('⬇️ 正在下载离线资源，请稍候...', 'loading');
-                            // 监听状态变化
-                            registration.onupdatefound = () => {
-                                const installingWorker = registration.installing;
-                                installingWorker.onstatechange = () => {
-                                    if (installingWorker.state === 'installed') {
-                                        updateStatus('🟢 资源下载完毕！请刷新页面生效', 'success');
-                                    }
-                                };
-                            };
+                            showToast('🟢 离线模式已激活 (无需外网)', 'success');
                         }
                     })
-                    .catch(err => updateStatus('❌ 离线引擎启动失败', 'error'));
+                    .catch(err => {
+                        console.error(err);
+                        showToast('❌ 离线引擎启动被浏览器拦截 (请检查隐私设置或使用 Chrome)', 'error');
+                    });
             });
-        } else {
-            updateStatus('⚠️ 当前浏览器不支持离线模式', 'error');
         }
     </script>
 
