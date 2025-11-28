@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>考研词汇大师 - 进阶版</title>
+    <title>考研词汇大师 - 最终完全体</title>
     
     <link rel="manifest" href="./manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -12,6 +12,7 @@
     <link rel="apple-touch-icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4da.png">
 
     <script src="https://cdn.tailwindcss.com"></script>
+
     <script crossorigin src="https://cdn.staticfile.net/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdn.staticfile.net/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script crossorigin src="https://cdn.staticfile.net/babel-standalone/7.23.5/babel.min.js"></script>
@@ -54,25 +55,13 @@
         <style>@keyframes spin { 0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);} }</style>
     </div>
 
- <div id="cache-status">📡 正在检查离线资源... (请保持网络畅通)</div>
-
-  <div id="cache-status" style="position: fixed; top: 0; left: 0; right: 0; background: #333; color: white; font-size: 12px; padding: 8px; text-align: center; z-index: 9999; display: none;"></div>
-
-   <div id="root" class="h-full flex flex-col">
-        <div style="height: 100vh; display: flex; justify-content: center; align-items: center; flex-direction: column;">
-            <div style="width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top-color: #4f46e5; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-            <p style="margin-top: 15px; color: #666; font-size: 14px;">资源加载中...</p>
-        </div>
-        <style>@keyframes spin { 0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);} }</style>
-    </div>
-
     <script>
         window.onerror = function(msg, url, line, col, error) {
             var root = document.getElementById('root');
             if(root) root.innerHTML = '<div style="padding:20px;text-align:center;color:red;"><h3>发生错误</h3><p>'+msg+'</p><p>Line: '+line+'</p></div>';
         };
-        
-        // 🔥 自动清理：如果检测到之前安装过 Service Worker，强制卸载它
+
+        // 🔥 自动清理：如果检测到之前安装过导致故障的 Service Worker，强制卸载它
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.getRegistrations().then(function(registrations) {
                 for(let registration of registrations) {
