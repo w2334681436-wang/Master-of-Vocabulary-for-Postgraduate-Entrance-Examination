@@ -180,40 +180,69 @@
             }
         };
 
-const WordChat = ({ word, onClose, config }) => {
+const WordChat = ({ word, words, setWords, onClose, config }) => {
+            // 从本地存储读取上次的颜色，默认为 Indigo
+            const [bubbleColor, setBubbleColor] = useState(localStorage.getItem('kaoyan_chat_color') || "#4f46e5");
             const [messages, setMessages] = useState([]);
             const [input, setInput] = useState("");
             const [isLoading, setIsLoading] = useState(false);
-            const [thinkMode, setThinkMode] = useState("fast");
-            const [bubbleColor, setBubbleColor] = useState("bg-indigo-600");
             const [showColorPicker, setShowColorPicker] = useState(false);
             const messagesEndRef = useRef(null);
-
             const [playingIdx, setPlayingIdx] = useState(null);
             const audioRef = useRef(null);
 
-            const colors = [
-                { name: "Indigo", class: "bg-indigo-600" },
-                { name: "Pink", class: "bg-pink-500" },
-                { name: "Green", class: "bg-emerald-500" },
-                { name: "Blue", class: "bg-blue-500" },
-                { name: "Orange", class: "bg-orange-500" },
-                { name: "Black", class: "bg-gray-800" }
-            ];
+            // 预设颜色 + 自定义
+            const presetColors = ["#4f46e5", "#ec4899", "#10b981", "#3b82f6", "#f97316", "#374151"];
 
             const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
+            
+            // 🔥 初始化：尝试加载记忆
+            useEffect(() => {
+                const currentWordObj = words.find(w => w.word === word);
+                if (currentWordObj && currentWordObj.chatHistory && currentWordObj.chatHistory.length > 0) {
+                    setMessages(currentWordObj.chatHistory);
+                } else {
+                    // 没有记忆，加载默认开场白
+                    const initialMsg = {
+                        role: "assistant",
+                        content: `Hi! 我是你的专属 AI 私教。\n我们今天要死磕的单词是： **${word}**。\n\n你可以直接问我：\n👉 怎么用？(例句)\n👉 怎么记？(词根)\n👉 考点是啥？`
+                    };
+                    setMessages([initialMsg]);
+                    // 存入初始状态，避免后续保存报错
+                    saveChatHistory([initialMsg]);
+                }
+            }, []);
+
+            // 监听消息变化，自动滚动
             useEffect(() => { scrollToBottom(); }, [messages]);
             useEffect(() => { return () => stopAudio(); }, []);
 
-            // 🔥 核心修复：配置 Marked 解析器，支持换行，防止挤在一起
-            useEffect(() => {
-                if (window.marked) {
-                    window.marked.setOptions({
-                        breaks: true, // 允许回车换行
-                        gfm: true     // 启用 GitHub 风格 Markdown
-                    });
-                }
-            }, []);
+            // 🔥 核心：保存聊天记录到 words 数据结构
+            const saveChatHistory = (newMessages) => {
+                const newWords = words.map(w => {
+                    if (w.word === word) {
+                        return { ...w, chatHistory: newMessages };
+                    }
+                    return w;
+                });
+                setWords(newWords);
+                localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
+            };
+
+            // 🔥 核心：保存颜色偏好
+            const handleColorChange = (color) => {
+                setBubbleColor(color);
+                localStorage.setItem('kaoyan_chat_color', color);
+                setShowColorPicker(false);
+            };
+
+            // 重置对话
+            const handleResetChat = () => {
+                if(!confirm("确定要清除在这个单词上的所有对话记忆吗？")) return;
+                const initialMsg = { role: "assistant", content: `记忆已重置。让我们重新开始学习 **${word}** 吧！` };
+                setMessages([initialMsg]);
+                saveChatHistory([initialMsg]);
+            };
 
             const stopAudio = () => {
                 if (audioRef.current) {
@@ -252,33 +281,21 @@ const WordChat = ({ word, onClose, config }) => {
                 window.speechSynthesis.speak(u);
             };
 
-            useEffect(() => {
-                const initialMsg = {
-                    role: "assistant",
-                    content: `Hi! 我是你的专属 AI 私教。\n我们今天要死磕的单词是： **${word}**。\n\n💡 **默认模式**：先拆词根，再讲考点，最后给记忆口诀。\n\n你可以切换上方模式：\n⚡ **快速**：简单通俗讲解\n📖 **深度**：考研真题考法\n👄 **口语**：纯英对话练听力`
-                };
-                setMessages([initialMsg]);
-                handleSend(null, `请严格按照以下步骤讲解单词 "${word}"：\n1. **词根词缀拆解**（这是最关键的）：详细拆分并解释每一部分。\n2. **核心含义与考法**：结合考研真题语境解释，列出熟词僻义。\n3. **记忆口诀**：给出一个好记的顺口溜。\n使用 Markdown 格式，重点加粗，分点显示。`);
-            }, []);
-
-            const handleSend = async (e, manualContent) => {
+            const handleSend = async (e) => {
                 if (e) e.preventDefault();
-                const content = manualContent || input.trim();
+                const content = input.trim();
                 if (!content || isLoading) return;
 
-                if (!manualContent) {
-                    setMessages(prev => [...prev, { role: "user", content }]);
-                    setInput("");
-                }
+                const newMsgUser = { role: "user", content };
+                const updatedMessages = [...messages, newMsgUser];
+                setMessages(updatedMessages);
+                saveChatHistory(updatedMessages); // 实时保存
+                setInput("");
                 setIsLoading(true);
 
-                let systemPrompt = "";
-                if (thinkMode === 'oral') systemPrompt = "You are a friendly American English tutor. Speak ONLY in English. Keep your sentences simple, clear, and encouraging. Correct the user's grammar gently if needed. Engage in a conversation using the target word.";
-                else if (thinkMode === 'deep') systemPrompt = "你是一位严肃的考研英语命题组专家。请从词源词根、熟词僻义、历年真题考法、易混词辨析这四个维度进行深度解析。必须使用 Markdown 格式，关键点加粗。";
-                else systemPrompt = "你是一位非常擅长类比的英语私教。请用最通俗、生活化、甚至有点幽默的语言解释单词。核心策略：1.把抽象概念具象化。2.多用生活场景串联不同词性。3.最后给一句“简单记”口诀。使用 Markdown 格式。";
-
                 try {
-                    const apiMessages = [{ role: "system", content: systemPrompt }, ...messages.filter(m => m.role !== 'error' && m.content !== '...'), { role: "user", content }];
+                    const apiMessages = [{ role: "system", content: "You are a helpful English tutor." }, ...updatedMessages];
+                    // 临时占位
                     setMessages(prev => [...prev, { role: "assistant", content: "..." }]);
                     
                     let baseUrl = config.baseUrl.replace(/\/$/, "");
@@ -294,6 +311,14 @@ const WordChat = ({ word, onClose, config }) => {
                     const reader = response.body.getReader();
                     const decoder = new TextDecoder("utf-8");
                     let fullText = "";
+                    
+                    // 移除占位符，准备接收流式数据
+                    setMessages(prev => {
+                        const newMsgs = [...prev];
+                        newMsgs.pop(); // 移除 "..."
+                        return [...newMsgs, { role: "assistant", content: "" }];
+                    });
+
                     while (true) {
                         const { done, value } = await reader.read();
                         if (done) break;
@@ -307,32 +332,45 @@ const WordChat = ({ word, onClose, config }) => {
                                     const json = JSON.parse(data);
                                     const delta = json.choices[0]?.delta?.content || "";
                                     fullText += delta;
-                                    setMessages(prev => { const newMsgs = [...prev]; newMsgs[newMsgs.length - 1] = { role: "assistant", content: fullText }; return newMsgs; });
+                                    setMessages(prev => { 
+                                        const newMsgs = [...prev]; 
+                                        newMsgs[newMsgs.length - 1] = { role: "assistant", content: fullText }; 
+                                        return newMsgs; 
+                                    });
                                 } catch (e) { }
                             }
                         }
                     }
-                } catch (error) { setMessages(prev => [...prev, { role: "error", content: "出错了: " + error.message }]); } finally { setIsLoading(false); }
+                    // 生成完毕，再次保存完整对话
+                    saveChatHistory([...updatedMessages, { role: "assistant", content: fullText }]);
+                } catch (error) { 
+                    setMessages(prev => [...prev, { role: "error", content: "出错了: " + error.message }]); 
+                } finally { setIsLoading(false); }
             };
 
             return (
                 <div className="fixed inset-0 z-[60] flex flex-col bg-white md:fixed md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[90vw] md:max-w-4xl md:h-[85vh] md:rounded-2xl md:shadow-2xl md:border md:border-gray-200 overflow-hidden animate-fade-in">
                     <div className="flex justify-between items-center p-4 border-b bg-white z-10 shadow-sm flex-shrink-0">
-                        <div className="flex flex-col">
-                            <h3 className="font-bold text-lg text-gray-800 flex items-center">{word} <span className="ml-2 text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded">AI 私教</span></h3>
-                            <div className="flex gap-2 mt-2">
-                                <button onClick={() => setThinkMode('fast')} className={`px-2 py-1 text-xs rounded-lg transition border ${thinkMode==='fast' ? 'bg-indigo-50 text-indigo-600 border-indigo-200 font-bold' : 'text-gray-500 border-transparent'}`}>⚡ 快速理解</button>
-                                <button onClick={() => setThinkMode('deep')} className={`px-2 py-1 text-xs rounded-lg transition border ${thinkMode==='deep' ? 'bg-indigo-50 text-indigo-600 border-indigo-200 font-bold' : 'text-gray-500 border-transparent'}`}>📖 深度考研</button>
-                                <button onClick={() => setThinkMode('oral')} className={`px-2 py-1 text-xs rounded-lg transition border ${thinkMode==='oral' ? 'bg-orange-50 text-orange-600 border-orange-200 font-bold' : 'text-gray-500 border-transparent'}`}>👄 口语对练</button>
-                            </div>
+                        <div className="flex items-center">
+                            <h3 className="font-bold text-lg text-gray-800 mr-2">{word}</h3>
+                            <span className="text-xs font-bold text-white px-2 py-0.5 rounded-full shadow-sm" style={{backgroundColor: bubbleColor}}>AI 私教</span>
                         </div>
-                        <div className="flex items-center gap-1">
-                            <button onClick={()=>setShowColorPicker(!showColorPicker)} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 relative"><Icon name="Palette" size={20}/></button>
-                            {showColorPicker && (
-                                <div className="absolute right-14 top-16 bg-white shadow-xl border rounded-lg p-2 grid grid-cols-3 gap-2 w-32 z-50">
-                                    {colors.map(c => (<div key={c.name} onClick={()=>setBubbleColor(c.class)} className={`w-6 h-6 rounded-full cursor-pointer border border-gray-100 ${c.class}`}></div>))}
-                                </div>
-                            )}
+                        <div className="flex items-center gap-2">
+                            <button onClick={handleResetChat} className="p-2 text-gray-400 hover:text-red-500 transition" title="清除记忆/重新生成"><Icon name="Trash2" size={18}/></button>
+                            <div className="relative">
+                                <button onClick={()=>setShowColorPicker(!showColorPicker)} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 transition"><Icon name="Palette" size={20}/></button>
+                                {showColorPicker && (
+                                    <div className="absolute right-0 top-10 bg-white shadow-xl border rounded-xl p-3 grid grid-cols-4 gap-2 w-48 z-50 animate-fade-in">
+                                        {presetColors.map(c => (
+                                            <div key={c} onClick={()=>handleColorChange(c)} className="w-8 h-8 rounded-full cursor-pointer border-2 border-white shadow-sm hover:scale-110 transition" style={{backgroundColor: c}}></div>
+                                        ))}
+                                        <label className="w-8 h-8 rounded-full cursor-pointer border-2 border-gray-200 flex items-center justify-center bg-gray-50 hover:bg-gray-100">
+                                            <input type="color" className="opacity-0 w-full h-full absolute cursor-pointer" onChange={(e)=>handleColorChange(e.target.value)}/>
+                                            <span className="text-xs text-gray-500">+</span>
+                                        </label>
+                                    </div>
+                                )}
+                            </div>
                             <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 text-gray-400"><Icon name="X" size={24}/></button>
                         </div>
                     </div>
@@ -340,10 +378,24 @@ const WordChat = ({ word, onClose, config }) => {
                     <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 bg-gray-50 custom-scroll" onClick={()=>setShowColorPicker(false)}>
                         {messages.map((msg, idx) => (
                             <div key={idx} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                {/* 🔥 修复：增加 max-w-[90%] 和 overflow-hidden 防止气泡过宽撑开屏幕 */}
                                 <div className={`flex flex-col max-w-[90%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                    <div className={`p-4 rounded-2xl text-sm md:text-base shadow-sm relative group break-words ${msg.role === 'user' ? 'bg-white text-gray-800 border border-gray-100 rounded-tr-none' : `${bubbleColor} text-white rounded-tl-none markdown-body`} ${msg.role === 'error' ? 'bg-red-50 text-red-600 border-red-200' : ''}`}>
+                                    {/* 🔥 3D 气泡样式升级 */}
+                                    <div 
+                                        className={`p-4 rounded-2xl text-sm md:text-base relative group break-words shadow-sm 
+                                            ${msg.role === 'user' 
+                                                ? 'bg-white text-gray-800 border border-gray-100 rounded-tr-none' 
+                                                : 'text-white rounded-tl-none markdown-body border-t border-white/20'
+                                            } 
+                                            ${msg.role === 'error' ? 'bg-red-50 text-red-600 border-red-200' : ''}
+                                        `}
+                                        style={msg.role === 'assistant' ? {
+                                            backgroundColor: bubbleColor,
+                                            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 6px rgba(0,0,0,0.1)' // 微立体效果
+                                        } : {}}
+                                    >
                                         {msg.role === 'assistant' ? <div dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }} /> : msg.content}
+                                        
+                                        {/* 朗读按钮 */}
                                         {msg.role === 'assistant' && msg.content !== '...' && (
                                             <button onClick={(e) => {e.stopPropagation(); toggleAudio(msg.content, idx);}} className={`absolute -right-8 bottom-0 p-1.5 text-gray-400 hover:text-indigo-600 bg-white/50 rounded-full hover:bg-white transition shadow-sm ${playingIdx === idx ? 'text-indigo-600 bg-white ring-2 ring-indigo-100' : ''}`}>
                                                 {playingIdx === idx ? <Icon name="Pause" size={16}/> : <Icon name="Volume2" size={16}/>}
@@ -357,8 +409,10 @@ const WordChat = ({ word, onClose, config }) => {
                     </div>
                     
                     <div className="p-3 bg-white border-t flex items-end gap-2 safe-bottom flex-shrink-0">
-                        <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => {if(e.key==='Enter' && !e.shiftKey){e.preventDefault(); handleSend();}}} placeholder="继续追问..." className="flex-1 max-h-32 p-3 bg-gray-50 border-0 rounded-xl focus:ring-2 focus:ring-indigo-100 outline-none resize-none text-sm" rows="1"></textarea>
-                        <button onClick={(e)=>handleSend(e)} disabled={isLoading || !input.trim()} className={`p-3 rounded-xl text-white shadow-md transition-all ${isLoading || !input.trim() ? 'bg-gray-300' : bubbleColor} active:scale-95`}>{isLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Icon name="Send" size={20} />}</button>
+                        <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => {if(e.key==='Enter' && !e.shiftKey){e.preventDefault(); handleSend();}}} placeholder="输入问题..." className="flex-1 max-h-32 p-3 bg-gray-50 border-0 rounded-xl focus:ring-2 focus:ring-indigo-100 outline-none resize-none text-sm" rows="1"></textarea>
+                        <button onClick={(e)=>handleSend(e)} disabled={isLoading || !input.trim()} className="p-3 rounded-xl text-white shadow-md transition-all active:scale-95" style={{backgroundColor: bubbleColor}}>
+                            {isLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Icon name="Send" size={20} />}
+                        </button>
                     </div>
                 </div>
             );
@@ -791,7 +845,7 @@ const WordChat = ({ word, onClose, config }) => {
         };
 
  
-       const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
+const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
             const [queue, setQueue] = useState([]);
             const [currentIdx, setCurrentIdx] = useState(0);
             const [isFlipped, setIsFlipped] = useState(false);
@@ -801,6 +855,7 @@ const WordChat = ({ word, onClose, config }) => {
             const [syntaxLoading, setSyntaxLoading] = useState(false);
             
             const [isFullscreen, setIsFullscreen] = useState(false);
+            // 模态框状态：content 初始为空
             const [syntaxModal, setSyntaxModal] = useState({ open: false, content: '' });
 
             useEffect(() => {
@@ -867,8 +922,11 @@ const WordChat = ({ word, onClose, config }) => {
             const toggleMeaningMastery = (e, mIdx) => { e.stopPropagation(); const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], isMastered:!meanings[mIdx].isMastered, _forceShow:false}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); const newWords=[...words]; const idx=newWords.findIndex(w=>w.id===currentCard.id); if(idx!==-1){ newWords[idx]={...newWords[idx], meanings:meanings}; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); } };
             const toggleForceShow = (mIdx) => { const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], _forceShow:!meanings[mIdx]._forceShow}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); };
             
-            const generateWordNote = async (e) => {
+            const generateWordNote = async (e, forceRegenerate = false) => {
                 e.stopPropagation(); 
+                // 🔥 记忆检查：如果有且不是强制刷新，直接使用
+                if (!forceRegenerate && currentCard.aiNote) return;
+
                 if (!config.apiKey) { alert("请设置 API Key"); return; } 
                 setIsGeneratingNote(true); 
                 try {
@@ -887,14 +945,20 @@ const WordChat = ({ word, onClose, config }) => {
                 } catch(e){ alert("生成失败: " + e.message); } finally { setIsGeneratingNote(false); }
             };
 
-            // 🔥 修复后的长难句功能：抛弃表格，使用列表和卡片
-            const performSyntaxSurgery = async (e) => {
+            // 🔥 长难句手术刀：带记忆功能
+            const performSyntaxSurgery = async (e, forceRegenerate = false) => {
                 e.stopPropagation();
+                
+                // 1. 检查记忆
+                if (!forceRegenerate && currentCard.aiSyntax) {
+                    setSyntaxModal({ open: true, content: currentCard.aiSyntax });
+                    return;
+                }
+
                 if (!config.apiKey) return alert("请先配置 API Key");
                 setSyntaxLoading(true);
-                setSyntaxModal({ open: true, content: '' });
+                setSyntaxModal({ open: true, content: '' }); // 清空内容，显示 Loading
 
-                // 优化 Prompt：禁止使用复杂表格，改用清晰的层级列表
                 const prompt = `请作为考研英语专家，用单词 "${currentCard.word}" 造一个**考研真题难度**的长难句（约30词）。
                 然后进行【语法手术刀】分析。为了在手机上阅读清晰，**严禁使用 Markdown 表格**，请严格使用以下格式：
 
@@ -956,6 +1020,15 @@ const WordChat = ({ word, onClose, config }) => {
                             }
                         }
                     }
+                    // 🔥 保存生成结果到单词对象
+                    const newWords = [...words];
+                    const targetWord = newWords.find(w => w.id === currentCard.id);
+                    if(targetWord) targetWord.aiSyntax = fullText;
+                    setWords(newWords);
+                    localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
+                    // 更新队列状态
+                    const newQueue = [...queue]; newQueue[currentIdx].aiSyntax = fullText; setQueue(newQueue);
+
                 } catch (e) {
                     setSyntaxModal(prev => ({ ...prev, content: "**分析失败**：" + e.message }));
                 } finally {
@@ -1039,19 +1112,32 @@ const WordChat = ({ word, onClose, config }) => {
                                         {/* 🔥 功能操作区 */}
                                         <div className="mt-6 mb-2 grid grid-cols-2 gap-3">
                                             {/* 1. 避坑指南 */}
-                                            <button onClick={generateWordNote} disabled={isGeneratingNote} className="py-4 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-2xl text-orange-600 font-bold flex flex-col items-center justify-center transition active:scale-95">
-                                                {isGeneratingNote ? <div className="w-5 h-5 border-2 border-orange-400 border-t-transparent rounded-full animate-spin"></div> : <span className="flex items-center"><span className="text-lg mr-2">🕵️‍♂️</span> 避坑指南</span>}
+                                            <button onClick={(e) => generateWordNote(e, false)} disabled={isGeneratingNote} className="py-4 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-2xl text-orange-600 font-bold flex flex-col items-center justify-center transition active:scale-95 group relative">
+                                                {isGeneratingNote ? <div className="w-5 h-5 border-2 border-orange-400 border-t-transparent rounded-full animate-spin"></div> : 
+                                                    <>
+                                                        <span className="flex items-center"><span className="text-lg mr-2">🕵️‍♂️</span> 避坑指南</span>
+                                                        {currentCard.aiNote && <div className="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full"></div>}
+                                                    </>
+                                                }
                                             </button>
-                                            {/* 2. 长难句手术刀 (新功能) */}
-                                            <button onClick={performSyntaxSurgery} disabled={syntaxLoading} className="py-4 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-2xl text-purple-600 font-bold flex flex-col items-center justify-center transition active:scale-95">
-                                                {syntaxLoading ? <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div> : <span className="flex items-center"><span className="text-lg mr-2">🧬</span> 长难句切片</span>}
+                                            {/* 2. 长难句手术刀 */}
+                                            <button onClick={(e) => performSyntaxSurgery(e, false)} disabled={syntaxLoading} className="py-4 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-2xl text-purple-600 font-bold flex flex-col items-center justify-center transition active:scale-95 relative">
+                                                {syntaxLoading ? <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div> : 
+                                                    <>
+                                                        <span className="flex items-center"><span className="text-lg mr-2">🧬</span> 长难句切片</span>
+                                                        {currentCard.aiSyntax && <div className="absolute top-2 right-2 w-2 h-2 bg-purple-500 rounded-full"></div>}
+                                                    </>
+                                                }
                                             </button>
                                         </div>
                                         
-                                        {/* 动态笔记展示区 */}
+                                        {/* 动态笔记展示区 (支持重置) */}
                                         {currentCard.aiNote && (
-                                            <div className="bg-orange-50 rounded-2xl border border-orange-100 p-5 shadow-sm animate-fade-in">
-                                                <div className="flex items-center mb-3 text-orange-800 font-bold"><span className="text-xl mr-2">🔥</span> 避坑 & 辨析</div>
+                                            <div className="bg-orange-50 rounded-2xl border border-orange-100 p-5 shadow-sm animate-fade-in relative group">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <span className="text-orange-800 font-bold flex items-center"><span className="text-xl mr-2">🔥</span> 避坑 & 辨析</span>
+                                                    <button onClick={(e)=>generateWordNote(e, true)} className="text-orange-400 hover:text-orange-600 text-xs bg-white/50 px-2 py-1 rounded border border-orange-200 transition">🔄 刷新</button>
+                                                </div>
                                                 <div className="markdown-body text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: marked.parse(currentCard.aiNote) }} />
                                             </div>
                                         )}
@@ -1074,7 +1160,11 @@ const WordChat = ({ word, onClose, config }) => {
                             <div className="bg-white w-full md:max-w-2xl h-[85vh] md:h-[80vh] rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
                                 <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-purple-50">
                                     <h3 className="font-bold text-purple-900 flex items-center"><span className="text-xl mr-2">🧬</span> 语法手术台</h3>
-                                    <button onClick={() => setSyntaxModal({ ...syntaxModal, open: false })} className="p-2 hover:bg-purple-100 rounded-full text-purple-800"><Icon name="X" size={20} /></button>
+                                    <div className="flex items-center gap-2">
+                                        {/* 🔄 重置按钮 */}
+                                        <button onClick={(e) => performSyntaxSurgery(e, true)} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-xs font-bold rounded-lg transition flex items-center"><span className="mr-1">🔄</span> 重新生成</button>
+                                        <button onClick={() => setSyntaxModal({ ...syntaxModal, open: false })} className="p-2 hover:bg-purple-100 rounded-full text-purple-800"><Icon name="X" size={20} /></button>
+                                    </div>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-6 custom-scroll bg-white">
                                     {syntaxModal.content ? (
@@ -1091,8 +1181,7 @@ const WordChat = ({ word, onClose, config }) => {
                     )}
                 </div>
             );
-        };             
-            
+        };
                                         
         
       const ImportExport = ({ setWords, words, setView, config }) => {
@@ -1466,8 +1555,7 @@ const WordChat = ({ word, onClose, config }) => {
                         {view === 'list' && <WordListMode words={words} setWords={setWords} setChatSession={setChatSession} />}
                         {view === 'import' && <ImportExport setWords={setWords} words={words} setView={setView} config={config} />}
                         {view === 'settings' && <SettingsPanel config={config} setConfig={setConfig} setView={setView} />}
-                        {chatSession && (<div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4 animate-fade-in"><WordChat word={chatSession} onClose={() => setChatSession(null)} config={config} /></div>)}
-                    </main>
+{chatSession && (<div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4 animate-fade-in"><WordChat word={chatSession} words={words} setWords={setWords} onClose={() => setChatSession(null)} config={config} /></div>)}                    </main>
                     <style>{`
                         @keyframes slide-up { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
                         .animate-slide-up { animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
