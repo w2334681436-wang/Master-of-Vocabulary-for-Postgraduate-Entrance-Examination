@@ -181,7 +181,7 @@
         };
 
 const WordChat = ({ word, words, setWords, onClose, config }) => {
-            // 从本地存储读取上次的颜色，默认为 Indigo
+            // 默认颜色 or 读取记忆颜色
             const [bubbleColor, setBubbleColor] = useState(localStorage.getItem('kaoyan_chat_color') || "#4f46e5");
             const [messages, setMessages] = useState([]);
             const [input, setInput] = useState("");
@@ -191,57 +191,56 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
             const [playingIdx, setPlayingIdx] = useState(null);
             const audioRef = useRef(null);
 
-            // 预设颜色 + 自定义
             const presetColors = ["#4f46e5", "#ec4899", "#10b981", "#3b82f6", "#f97316", "#374151"];
+            
+            // 🔥 你最爱的“深度解析”提示词 (预置模板)
+            const magicPrompt = `请严格按照以下步骤讲解单词 "${word}"：\n1. **词根词缀拆解**（这是最关键的）：详细拆分并解释每一部分。\n2. **核心含义与考法**：结合考研真题语境解释，列出熟词僻义。\n3. **记忆口诀**：给出一个好记的顺口溜。\n使用 Markdown 格式，重点加粗。`;
 
             const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
             
-            // 🔥 初始化：尝试加载记忆
             useEffect(() => {
                 const currentWordObj = words.find(w => w.word === word);
+                // 1. 如果有历史记录，直接加载，输入框留空
                 if (currentWordObj && currentWordObj.chatHistory && currentWordObj.chatHistory.length > 0) {
                     setMessages(currentWordObj.chatHistory);
+                    setInput(""); 
                 } else {
-                    // 没有记忆，加载默认开场白
+                    // 2. 如果是第一次打开，加载开场白，并将“魔法提示词”填入输入框
                     const initialMsg = {
                         role: "assistant",
-                        content: `Hi! 我是你的专属 AI 私教。\n我们今天要死磕的单词是： **${word}**。\n\n你可以直接问我：\n👉 怎么用？(例句)\n👉 怎么记？(词根)\n👉 考点是啥？`
+                        content: `Hi! 我是你的专属 AI 私教。\n我们今天要死磕的单词是： **${word}**。\n\n👇 下方输入框已为你准备好**深度解析**指令，点击发送即可！`
                     };
                     setMessages([initialMsg]);
-                    // 存入初始状态，避免后续保存报错
                     saveChatHistory([initialMsg]);
+                    setInput(magicPrompt); // 🔥 自动填充提示词
                 }
             }, []);
 
-            // 监听消息变化，自动滚动
             useEffect(() => { scrollToBottom(); }, [messages]);
             useEffect(() => { return () => stopAudio(); }, []);
 
-            // 🔥 核心：保存聊天记录到 words 数据结构
             const saveChatHistory = (newMessages) => {
                 const newWords = words.map(w => {
-                    if (w.word === word) {
-                        return { ...w, chatHistory: newMessages };
-                    }
+                    if (w.word === word) return { ...w, chatHistory: newMessages };
                     return w;
                 });
                 setWords(newWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
             };
 
-            // 🔥 核心：保存颜色偏好
+            // 🔥 修复：颜色改变时，强制重绘 (React State 驱动)
             const handleColorChange = (color) => {
                 setBubbleColor(color);
                 localStorage.setItem('kaoyan_chat_color', color);
                 setShowColorPicker(false);
             };
 
-            // 重置对话
             const handleResetChat = () => {
-                if(!confirm("确定要清除在这个单词上的所有对话记忆吗？")) return;
-                const initialMsg = { role: "assistant", content: `记忆已重置。让我们重新开始学习 **${word}** 吧！` };
+                if(!confirm("确定要清除记忆并重新开始吗？")) return;
+                const initialMsg = { role: "assistant", content: `记忆已重置。请点击发送按钮重新生成详解！` };
                 setMessages([initialMsg]);
                 saveChatHistory([initialMsg]);
+                setInput(magicPrompt); // 重置后再次填充提示词
             };
 
             const stopAudio = () => {
@@ -289,13 +288,12 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                 const newMsgUser = { role: "user", content };
                 const updatedMessages = [...messages, newMsgUser];
                 setMessages(updatedMessages);
-                saveChatHistory(updatedMessages); // 实时保存
+                saveChatHistory(updatedMessages);
                 setInput("");
                 setIsLoading(true);
 
                 try {
                     const apiMessages = [{ role: "system", content: "You are a helpful English tutor." }, ...updatedMessages];
-                    // 临时占位
                     setMessages(prev => [...prev, { role: "assistant", content: "..." }]);
                     
                     let baseUrl = config.baseUrl.replace(/\/$/, "");
@@ -312,12 +310,7 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                     const decoder = new TextDecoder("utf-8");
                     let fullText = "";
                     
-                    // 移除占位符，准备接收流式数据
-                    setMessages(prev => {
-                        const newMsgs = [...prev];
-                        newMsgs.pop(); // 移除 "..."
-                        return [...newMsgs, { role: "assistant", content: "" }];
-                    });
+                    setMessages(prev => { const newMsgs = [...prev]; newMsgs.pop(); return [...newMsgs, { role: "assistant", content: "" }]; });
 
                     while (true) {
                         const { done, value } = await reader.read();
@@ -341,7 +334,6 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                             }
                         }
                     }
-                    // 生成完毕，再次保存完整对话
                     saveChatHistory([...updatedMessages, { role: "assistant", content: fullText }]);
                 } catch (error) { 
                     setMessages(prev => [...prev, { role: "error", content: "出错了: " + error.message }]); 
@@ -353,7 +345,7 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                     <div className="flex justify-between items-center p-4 border-b bg-white z-10 shadow-sm flex-shrink-0">
                         <div className="flex items-center">
                             <h3 className="font-bold text-lg text-gray-800 mr-2">{word}</h3>
-                            <span className="text-xs font-bold text-white px-2 py-0.5 rounded-full shadow-sm" style={{backgroundColor: bubbleColor}}>AI 私教</span>
+                            <span className="text-xs font-bold text-white px-2 py-0.5 rounded-full shadow-sm transition-colors duration-300" style={{backgroundColor: bubbleColor}}>AI 私教</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <button onClick={handleResetChat} className="p-2 text-gray-400 hover:text-red-500 transition" title="清除记忆/重新生成"><Icon name="Trash2" size={18}/></button>
@@ -379,23 +371,22 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                         {messages.map((msg, idx) => (
                             <div key={idx} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`flex flex-col max-w-[90%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                    {/* 🔥 3D 气泡样式升级 */}
                                     <div 
-                                        className={`p-4 rounded-2xl text-sm md:text-base relative group break-words shadow-sm 
+                                        className={`p-4 rounded-2xl text-sm md:text-base relative group break-words shadow-sm transition-colors duration-300 
                                             ${msg.role === 'user' 
                                                 ? 'bg-white text-gray-800 border border-gray-100 rounded-tr-none' 
                                                 : 'text-white rounded-tl-none markdown-body border-t border-white/20'
                                             } 
                                             ${msg.role === 'error' ? 'bg-red-50 text-red-600 border-red-200' : ''}
                                         `}
+                                        // 🔥 关键修复：这里直接绑定 state 中的 bubbleColor，保证实时变色
                                         style={msg.role === 'assistant' ? {
                                             backgroundColor: bubbleColor,
-                                            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 6px rgba(0,0,0,0.1)' // 微立体效果
+                                            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3), 0 4px 10px rgba(0,0,0,0.1)' 
                                         } : {}}
                                     >
                                         {msg.role === 'assistant' ? <div dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }} /> : msg.content}
                                         
-                                        {/* 朗读按钮 */}
                                         {msg.role === 'assistant' && msg.content !== '...' && (
                                             <button onClick={(e) => {e.stopPropagation(); toggleAudio(msg.content, idx);}} className={`absolute -right-8 bottom-0 p-1.5 text-gray-400 hover:text-indigo-600 bg-white/50 rounded-full hover:bg-white transition shadow-sm ${playingIdx === idx ? 'text-indigo-600 bg-white ring-2 ring-indigo-100' : ''}`}>
                                                 {playingIdx === idx ? <Icon name="Pause" size={16}/> : <Icon name="Volume2" size={16}/>}
@@ -409,7 +400,8 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                     </div>
                     
                     <div className="p-3 bg-white border-t flex items-end gap-2 safe-bottom flex-shrink-0">
-                        <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => {if(e.key==='Enter' && !e.shiftKey){e.preventDefault(); handleSend();}}} placeholder="输入问题..." className="flex-1 max-h-32 p-3 bg-gray-50 border-0 rounded-xl focus:ring-2 focus:ring-indigo-100 outline-none resize-none text-sm" rows="1"></textarea>
+                        {/* 🔥 修复：input 绑定 state，初始值就是你的 prompt */}
+                        <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => {if(e.key==='Enter' && !e.shiftKey){e.preventDefault(); handleSend();}}} placeholder="输入问题..." className="flex-1 max-h-32 p-3 bg-gray-50 border-0 rounded-xl focus:ring-2 focus:ring-indigo-100 outline-none resize-none text-sm custom-scroll" rows="3"></textarea>
                         <button onClick={(e)=>handleSend(e)} disabled={isLoading || !input.trim()} className="p-3 rounded-xl text-white shadow-md transition-all active:scale-95" style={{backgroundColor: bubbleColor}}>
                             {isLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Icon name="Send" size={20} />}
                         </button>
