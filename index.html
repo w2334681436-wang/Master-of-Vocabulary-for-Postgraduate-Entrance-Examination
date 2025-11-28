@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>考研词汇大师 - 修复版</title>
+    <title>考研词汇大师 - 完美离线版</title>
     
     <link rel="manifest" href="./manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -34,6 +34,10 @@
         .safe-top { padding-top: env(safe-area-inset-top); }
         .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
         
+        /* 状态条样式 */
+        #cache-status { position: fixed; top: 0; left: 0; right: 0; background: rgba(0,0,0,0.8); color: white; font-size: 12px; padding: 4px; text-align: center; z-index: 9999; transition: transform 0.3s; }
+        #cache-status.hidden { transform: translateY(-100%); }
+        
         .markdown-body p { margin-bottom: 0.5em; }
         .markdown-body strong { color: inherit; font-weight: 700; }
         .markdown-body ul { list-style-type: disc; padding-left: 1.2em; margin-bottom: 0.5em; }
@@ -55,56 +59,112 @@
         <style>@keyframes spin { 0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);} }</style>
     </div>
 
-   <script>
+ <div id="cache-status">📡 正在检查离线资源... (请保持网络畅通)</div>
+
+    <script>
         // 1. 错误捕获
         window.onerror = function(msg, url, line, col, error) {
             var root = document.getElementById('root');
-            if(root) root.innerHTML = '<div style="padding:20px;text-align:center;color:red;"><h3>发生错误</h3><p>'+msg+'</p><p>请刷新页面重试</p></div>';
+            if(root && !root.innerHTML.includes('发生错误')) {
+                root.innerHTML = '<div style="padding:20px;text-align:center;color:red;"><h3>启动失败</h3><p>'+msg+'</p><p>请检查网络或刷新页面</p></div>';
+            }
         };
 
-        // 2. 考研专用：国内/离线双模引擎
+        // 更新状态条的工具函数
+        function updateStatus(msg, type) {
+            const el = document.getElementById('cache-status');
+            if(el) {
+                el.textContent = msg;
+                if(type === 'success') {
+                    el.style.backgroundColor = '#10b981'; // 绿色
+                    setTimeout(() => el.classList.add('hidden'), 3000); // 3秒后隐藏
+                } else if (type === 'error') {
+                    el.style.backgroundColor = '#ef4444'; // 红色
+                }
+            }
+        }
+
+        // 2. 强力离线缓存引擎
         if ('serviceWorker' in navigator) {
             const swCode = `
-                const CACHE_NAME = 'kaoyan-static-v4'; // 升级缓存版本
-                
-                // 排除列表：不要缓存 API 请求，否则会出错
-                const EXCLUDE_URLS = ['api.openai.com', 'api.deepseek.com', 'googleapis.com', 'aliyuncs.com'];
+                const CACHE_NAME = 'kaoyan-offline-v5';
+                const URLS_TO_CACHE = [
+                    './',
+                    './index.html',
+                    'https://cdn.tailwindcss.com',
+                    'https://cdn.staticfile.net/react/18.2.0/umd/react.production.min.js',
+                    'https://cdn.staticfile.net/react-dom/18.2.0/umd/react-dom.production.min.js',
+                    'https://cdn.staticfile.net/babel-standalone/7.23.5/babel.min.js',
+                    'https://cdn.staticfile.net/marked/9.1.2/marked.min.js',
+                    'https://cdn.staticfile.net/lz-string/1.4.4/lz-string.min.js',
+                    'https://cdn.staticfile.net/twemoji/14.0.2/72x72/1f4da.png'
+                ];
 
-                self.addEventListener('install', e => self.skipWaiting());
-                self.addEventListener('activate', e => self.clients.claim());
-                
+                self.addEventListener('install', event => {
+                    self.skipWaiting();
+                    event.waitUntil(
+                        caches.open(CACHE_NAME).then(cache => {
+                            // 暴力缓存：强制下载核心库
+                            return cache.addAll(URLS_TO_CACHE);
+                        })
+                    );
+                });
+
+                self.addEventListener('activate', event => {
+                    event.waitUntil(self.clients.claim());
+                });
+
                 self.addEventListener('fetch', event => {
-                    const url = new URL(event.request.url);
-                    
-                    // 只缓存 http/https 协议，且不在排除列表中的请求
-                    if (event.request.url.startsWith('http') && !EXCLUDE_URLS.some(u => url.hostname.includes(u)) && event.request.method === 'GET') {
-                        event.respondWith(
-                            caches.match(event.request).then(cachedResponse => {
-                                // 策略：缓存优先。有了缓存直接用，秒开且不联网。
-                                if (cachedResponse) return cachedResponse;
-                                
-                                return fetch(event.request).then(response => {
-                                    // 只缓存成功的响应，且必须是 CDN 资源或本站资源
-                                    if(!response || response.status !== 200 || response.type !== 'basic' && response.type !== 'cors') return response;
-                                    
-                                    const responseToCache = response.clone();
-                                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
-                                    return response;
-                                }).catch(() => {}); 
-                            })
-                        );
+                    // API 请求不缓存
+                    if (event.request.url.includes('/chat/completions') || event.request.url.includes('api.')) {
+                        return;
                     }
+                    
+                    event.respondWith(
+                        caches.match(event.request).then(response => {
+                            // 缓存命中：直接返回（秒开）
+                            if (response) return response;
+                            
+                            // 缓存未命中：去网络下载并存入缓存
+                            return fetch(event.request).then(networkResponse => {
+                                if (networkResponse && networkResponse.status === 200 && event.request.method === 'GET' && event.request.url.startsWith('http')) {
+                                    const responseClone = networkResponse.clone();
+                                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseClone));
+                                }
+                                return networkResponse;
+                            });
+                        })
+                    );
                 });
             `;
-            
+
             const blob = new Blob([swCode], {type: 'application/javascript'});
             const swUrl = URL.createObjectURL(blob);
             
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register(swUrl)
-                    .then(() => console.log('✅ 国内离线引擎已就绪'))
-                    .catch(err => console.log('SW Fail', err));
+                    .then(registration => {
+                        console.log('SW Registered');
+                        // 检查是否已经控制页面
+                        if (navigator.serviceWorker.controller) {
+                            updateStatus('🟢 离线资源已就绪！下次可断网使用', 'success');
+                        } else {
+                            updateStatus('⬇️ 正在下载离线资源，请稍候...', 'loading');
+                            // 监听状态变化
+                            registration.onupdatefound = () => {
+                                const installingWorker = registration.installing;
+                                installingWorker.onstatechange = () => {
+                                    if (installingWorker.state === 'installed') {
+                                        updateStatus('🟢 资源下载完毕！请刷新页面生效', 'success');
+                                    }
+                                };
+                            };
+                        }
+                    })
+                    .catch(err => updateStatus('❌ 离线引擎启动失败', 'error'));
             });
+        } else {
+            updateStatus('⚠️ 当前浏览器不支持离线模式', 'error');
         }
     </script>
 
