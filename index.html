@@ -127,6 +127,9 @@
             Eye: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
             EyeOff: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>,
             Sparkles: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+       // ...在 Icons 对象中添加以下两个图标...
+            RotateCcw: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>,
+            PlusCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>,
         };
 
         const Icon = ({ name, size = 20, className = "" }) => {
@@ -679,19 +682,41 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
             );
         };
 
-        const Dashboard = ({ words, setView, setSessionConfig }) => {
+       const Dashboard = ({ words, setView, setSessionConfig }) => {
             const stats = useMemo(() => {
-                const counts = { high: 0, medium: 0, low: 0, zero: 0, uncategorized: 0, review: 0 };
+                const counts = { high: 0, medium: 0, low: 0, zero: 0, uncategorized: 0, review: 0, masteredTotal: 0 };
                 const now = Date.now();
                 words.forEach(w => {
                     const cat = w.category || 'uncategorized';
                     if (['high', 'medium', 'low', 'zero'].includes(cat)) counts[cat]++; else if (!counts[cat]) counts[cat] = 1; else counts[cat]++;
                     if (w.stats && w.stats.nextReview <= now && w.stats.interval !== 0) counts.review++;
+                    // 统计已掌握总量 (Interval > 1 代表已经通过了初次筛选)
+                    if (w.stats && w.stats.interval > 1) counts.masteredTotal++;
                 });
                 return counts;
             }, [words]);
+
+            // 🏆 终身学习等级系统
+            const getLevelInfo = (count) => {
+                const levels = [
+                    { min: 0, title: "🌱 英语萌新", next: 100 },
+                    { min: 100, title: "🥉 考研起步", next: 800 },
+                    { min: 800, title: "🥈 核心突破", next: 2500 },
+                    { min: 2500, title: "🥇 考研高分", next: 5500 },
+                    { min: 5500, title: "🎓 学术大牛", next: 8000 },
+                    { min: 8000, title: "🌍 雅思满分", next: 12000 },
+                    { min: 12000, title: "👽 专八大神", next: 20000 },
+                    { min: 20000, title: "👑 独孤求败", next: 40000 }
+                ];
+                const current = levels.find((l, i) => count >= l.min && count < (levels[i+1]?.min || 999999)) || levels[0];
+                const progress = Math.min(100, Math.round(((count - current.min) / (current.next - current.min)) * 100));
+                return { ...current, progress };
+            };
+
+            const level = getLevelInfo(stats.masteredTotal);
+            
             const standardCats = ['high', 'medium', 'low', 'zero'];
-            const customCats = Object.keys(stats).filter(k => !standardCats.includes(k) && k !== 'review' && k !== 'uncategorized');
+            const customCats = Object.keys(stats).filter(k => !standardCats.includes(k) && k !== 'review' && k !== 'uncategorized' && k !== 'masteredTotal');
             const openCategory = (category) => { setSessionConfig({ type: 'group_select', category }); setView('group_list'); };
             const startReview = () => { setSessionConfig({ type: 'review' }); setView('study'); };
             
@@ -712,6 +737,24 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
             return (
                 <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 bg-gray-50">
                     <div className="max-w-5xl mx-auto space-y-8 pb-10">
+                        {/* 🔥 等级展示卡片 */}
+                        <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+                            <div className="flex justify-between items-end mb-2">
+                                <div>
+                                    <div className="text-xs text-gray-400 uppercase font-bold tracking-wider mb-1">Current Level</div>
+                                    <div className="text-2xl md:text-3xl font-black text-indigo-900">{level.title}</div>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-3xl font-bold text-indigo-600">{stats.masteredTotal}</span>
+                                    <span className="text-gray-400 text-xs ml-1">/ {level.next} 词</span>
+                                </div>
+                            </div>
+                            <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-1000" style={{width: `${level.progress}%`}}></div>
+                            </div>
+                            <div className="text-right text-xs text-gray-400 mt-2">距离下一等级还需 {level.next - stats.masteredTotal} 个熟练词</div>
+                        </div>
+
                         <div onClick={startReview} className="w-full bg-gradient-to-br from-indigo-600 to-violet-600 p-8 rounded-2xl text-white shadow-xl shadow-indigo-200 cursor-pointer transform transition hover:-translate-y-1 hover:shadow-2xl active:scale-[0.99] relative overflow-hidden flex flex-col md:flex-row justify-between items-center group">
                             <div className="z-10 relative text-center md:text-left">
                                 <h2 className="text-3xl font-bold mb-2 tracking-tight">智能复习计划</h2>
@@ -1021,6 +1064,66 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
             const [isFullscreen, setIsFullscreen] = useState(false);
             // 模态框状态：content 初始为空
             const [syntaxModal, setSyntaxModal] = useState({ open: false, content: '' });
+    // ... 在 StudySession 组件内部，原有 state 定义之后插入 ...
+
+            // --- 新增状态：撤回功能 & 快捷添加释义 ---
+            const [history, setHistory] = useState([]); // 撤回栈
+            const [addMeaningModal, setAddMeaningModal] = useState({ open: false, pos: '', def: '' }); // 添加释义弹窗
+
+            // --- 新增逻辑：撤回上一步 ---
+            const handleUndo = (e) => {
+                if(e) e.stopPropagation();
+                if (history.length === 0) return;
+                
+                const lastAction = history[history.length - 1];
+                const newHistory = history.slice(0, -1);
+
+                // 1. 恢复全局单词数据的旧状态
+                const restoredWords = words.map(w => w.id === lastAction.wordId ? { ...w, stats: lastAction.oldStats } : w);
+                setWords(restoredWords);
+                localStorage.setItem('kaoyan_vocab_list', JSON.stringify(restoredWords));
+
+                // 2. 恢复队列位置
+                setCurrentIdx(lastAction.idx);
+                setIsFinished(false); 
+                setIsFlipped(true); // 撤回后通常回到背面
+
+                // 3. 如果上次操作导致了追加复习（Rating 1/2），从队列末尾移除
+                if (lastAction.addedToQueue) {
+                    setQueue(prev => prev.slice(0, prev.length - 1));
+                }
+
+                setHistory(newHistory);
+            };
+
+            // --- 新增逻辑：保存新释义 ---
+            const handleSaveNewMeaning = () => {
+                if (!addMeaningModal.pos || !addMeaningModal.def) return alert("请填写词性和释义");
+                
+                const newMeaningObj = { 
+                    pos: addMeaningModal.pos.trim(), 
+                    def: addMeaningModal.def.trim(), 
+                    sentence: "", 
+                    isMastered: false 
+                };
+
+                // 1. 更新全局 Words
+                const newWords = words.map(w => {
+                    if (w.id === currentCard.id) {
+                        return { ...w, meanings: [...w.meanings, newMeaningObj] };
+                    }
+                    return w;
+                });
+                setWords(newWords);
+                localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
+
+                // 2. 更新当前队列中的卡片 (确保UI立即刷新)
+                const newQueue = [...queue];
+                newQueue[currentIdx] = { ...newQueue[currentIdx], meanings: [...newQueue[currentIdx].meanings, newMeaningObj] };
+                setQueue(newQueue);
+
+                setAddMeaningModal({ open: false, pos: '', def: '' });
+            };
 
             useEffect(() => {
                 const now = Date.now();
@@ -1071,16 +1174,30 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 return groups;
             }, [currentCard]);
 
+           // --- 修改后的评分逻辑：加入历史记录 ---
             const handleRating = (rating) => {
                 const word = currentCard;
+                
+                // 1. 🔥 核心修改：在改变状态前，将当前快照压入历史栈
+                setHistory(prev => [...prev, {
+                    wordId: word.id,
+                    oldStats: word.stats, // 保存修改前的 stats 用于恢复
+                    idx: currentIdx,      // 保存当前队列索引
+                    addedToQueue: rating === 1 || rating === 2 // 记录这次操作是否导致了追加复习
+                }]);
+
                 const currentStats = word.stats || { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 };
                 const result = calculateNextReview(rating, currentStats.interval, currentStats.easeFactor, currentStats.reviewCount);
                 const newStats = { interval: result.interval, easeFactor: result.easeFactor, nextReview: Date.now() + (result.interval * 24 * 60 * 60 * 1000), reviewCount: result.reviewCount };
+                
                 const updatedWords = words.map(w => w.id === word.id ? { ...w, stats: newStats } : w);
                 setWords(updatedWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(updatedWords));
+                
                 if (result.isDueNow) setQueue(prev => [...prev, { ...word, stats: newStats, isRepeat: true }]);
-                setIsFlipped(false); setTimeout(() => currentIdx + 1 >= queue.length ? setIsFinished(true) : setCurrentIdx(prev => prev + 1), 200);
+                
+                setIsFlipped(false); 
+                setTimeout(() => currentIdx + 1 >= queue.length ? setIsFinished(true) : setCurrentIdx(prev => prev + 1), 200);
             };
 
             const toggleMeaningMastery = (e, mIdx) => { e.stopPropagation(); const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], isMastered:!meanings[mIdx].isMastered, _forceShow:false}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); const newWords=[...words]; const idx=newWords.findIndex(w=>w.id===currentCard.id); if(idx!==-1){ newWords[idx]={...newWords[idx], meanings:meanings}; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); } };
@@ -1212,6 +1329,16 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     <button onClick={onExit} className="absolute top-4 left-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title="退出">
                         <Icon name="ArrowLeft" size={24}/>
                     </button>
+
+                    {/* 新增：撤回按钮 (放在返回按钮右侧) */}
+                    <button 
+                        onClick={(e) => {e.stopPropagation(); handleUndo(e);}} 
+                        disabled={history.length === 0} 
+                        className={`absolute top-4 left-16 z-20 p-2.5 backdrop-blur rounded-full shadow-md transition ${history.length === 0 ? 'bg-gray-200/50 text-gray-400 cursor-not-allowed' : 'bg-white/80 text-gray-600 hover:text-indigo-600 hover:bg-white'}`} 
+                        title="撤回上一步"
+                    >
+                        <Icon name="RotateCcw" size={24}/>
+                    </button>
                     
                     <button onClick={toggleFullscreen} className="absolute top-4 right-16 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title={isFullscreen ? "退出全屏" : "全屏模式"}>
                         <Icon name={isFullscreen ? "Minimize" : "Maximize"} size={24}/>
@@ -1269,6 +1396,13 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                                                             </div>
                                                         );
                                                     })}
+                                                    {/* 新增：快捷添加释义按钮 (放在释义列表下方) */}
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setAddMeaningModal({ open: true, pos: 'adj.', def: '' }); }}
+                                            className="w-full py-3 mt-4 mb-2 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 hover:text-indigo-500 hover:border-indigo-300 hover:bg-indigo-50 transition flex items-center justify-center font-bold text-sm"
+                                        >
+                                            <span className="mr-2"><Icon name="PlusCircle" size={18}/></span> 补充新释义
+                                        </button>
                                                 </div>
                                             </div>
                                         ))}
@@ -1343,6 +1477,42 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                             </div>
                         </div>
                     )}
+                    {/* 新增：快捷添加释义弹窗 */}
+                    {addMeaningModal.open && (
+                        <div className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setAddMeaningModal({ ...addMeaningModal, open: false })}>
+                            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                                <h3 className="text-lg font-bold text-gray-800 mb-4">补充新释义</h3>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">词性</label>
+                                        <input 
+                                            type="text" 
+                                            value={addMeaningModal.pos} 
+                                            onChange={e => setAddMeaningModal({ ...addMeaningModal, pos: e.target.value })} 
+                                            placeholder="例如: n. / vt." 
+                                            className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">意思</label>
+                                        <input 
+                                            type="text" 
+                                            value={addMeaningModal.def} 
+                                            onChange={e => setAddMeaningModal({ ...addMeaningModal, def: e.target.value })} 
+                                            placeholder="输入中文释义..." 
+                                            className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                                            onKeyDown={e => {if(e.key === 'Enter') handleSaveNewMeaning();}}
+                                            autoFocus
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex gap-3 mt-6">
+                                    <button onClick={() => setAddMeaningModal({ ...addMeaningModal, open: false })} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">取消</button>
+                                    <button onClick={handleSaveNewMeaning} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg">保存</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -1388,8 +1558,24 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                         const rawWord = matchHead[1].trim(); const parsedMeanings = parseMultiPos(rawWord, seg);
                         if (parsedMeanings.length > 0) {
                             const existingIdx = currentWords.findIndex(w => w.word.toLowerCase() === rawWord.toLowerCase());
-                            if (!isNewBatch && existingIdx !== -1) { const existingWord = currentWords[existingIdx]; parsedMeanings.forEach(nm => { if (!existingWord.meanings.some(om => om.pos === nm.pos && om.def === nm.def)) existingWord.meanings.push(nm); }); mergedCount++; } 
-                            else { currentWords.push({ id: `auto-${Date.now()}-${idx}`, word: rawWord, phonetic: "", category: targetCat, importId: batchId, meanings: parsedMeanings, stats: { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 } }); addedCount++; }
+if (!isNewBatch && existingIdx !== -1) {
+    const existingWord = currentWords[existingIdx];
+    let hasNewMeaning = false; // 标记是否有新意思加入
+    
+    parsedMeanings.forEach(nm => {
+        if (!existingWord.meanings.some(om => om.pos === nm.pos && om.def === nm.def)) {
+            existingWord.meanings.push(nm);
+            hasNewMeaning = true; // 发现新意思
+        }
+    });
+
+    if (hasNewMeaning) {
+        mergedCount++;
+        // 🔥 Feature 3: 如果加入了新意思，重置该单词的学习进度，使其重新进入学习队列
+        existingWord.stats = { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 };
+    }
+}                           
+    else { currentWords.push({ id: `auto-${Date.now()}-${idx}`, word: rawWord, phonetic: "", category: targetCat, importId: batchId, meanings: parsedMeanings, stats: { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 } }); addedCount++; }
                         }
                     }
                 });
