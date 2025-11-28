@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>考研词汇大师 - 离线终极版</title>
+    <title>考研词汇大师 - 极速国内版</title>
     
     <link rel="manifest" href="./manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -11,7 +11,7 @@
     <meta name="theme-color" content="#4f46e5">
     <link rel="apple-touch-icon" href="https://cdn.staticfile.net/twemoji/14.0.2/72x72/1f4da.png">
 
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.staticfile.net/tailwindcss/3.3.5/tailwindcss.js"></script>
     <script crossorigin src="https://cdn.staticfile.net/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdn.staticfile.net/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script crossorigin src="https://cdn.staticfile.net/babel-standalone/7.23.5/babel.min.js"></script>
@@ -61,38 +61,47 @@
             if(root) root.innerHTML = '<div style="padding:20px;text-align:center;color:red;"><h3>发生错误</h3><p>'+msg+'</p><p>请刷新页面重试</p></div>';
         };
 
-        // 2. 只有考研人懂的“内嵌式”离线缓存引擎 (无需外部 sw.js 文件)
-        // 这一步是为了让你一次加载后，断网/国内网也能秒开
+        // 2. 考研专用：国内/离线双模引擎
         if ('serviceWorker' in navigator) {
             const swCode = `
-                const CACHE_NAME = 'kaoyan-master-v3';
+                const CACHE_NAME = 'kaoyan-static-v4'; // 升级缓存版本
+                
+                // 排除列表：不要缓存 API 请求，否则会出错
+                const EXCLUDE_URLS = ['api.openai.com', 'api.deepseek.com', 'googleapis.com', 'aliyuncs.com'];
+
                 self.addEventListener('install', e => self.skipWaiting());
                 self.addEventListener('activate', e => self.clients.claim());
+                
                 self.addEventListener('fetch', event => {
-                    // 只要请求的是 http/https，就尝试缓存
-                    if (event.request.url.startsWith('http')) {
+                    const url = new URL(event.request.url);
+                    
+                    // 只缓存 http/https 协议，且不在排除列表中的请求
+                    if (event.request.url.startsWith('http') && !EXCLUDE_URLS.some(u => url.hostname.includes(u)) && event.request.method === 'GET') {
                         event.respondWith(
                             caches.match(event.request).then(cachedResponse => {
-                                // 策略：缓存优先。如果有缓存，直接用（秒开）；没缓存，才去网络请求并存下来
+                                // 策略：缓存优先。有了缓存直接用，秒开且不联网。
                                 if (cachedResponse) return cachedResponse;
+                                
                                 return fetch(event.request).then(response => {
+                                    // 只缓存成功的响应，且必须是 CDN 资源或本站资源
                                     if(!response || response.status !== 200 || response.type !== 'basic' && response.type !== 'cors') return response;
+                                    
                                     const responseToCache = response.clone();
                                     caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
                                     return response;
-                                }).catch(() => {}); // 离线且无缓存时，什么都不做
+                                }).catch(() => {}); 
                             })
                         );
                     }
                 });
             `;
-            // 将字符串转为 Blob URL，模拟一个独立文件
+            
             const blob = new Blob([swCode], {type: 'application/javascript'});
             const swUrl = URL.createObjectURL(blob);
             
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register(swUrl)
-                    .then(() => console.log('✅ 离线引擎已启动：下次打开无需外网'))
+                    .then(() => console.log('✅ 国内离线引擎已就绪'))
                     .catch(err => console.log('SW Fail', err));
             });
         }
