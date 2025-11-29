@@ -1069,8 +1069,7 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
             );
         };
 
- 
-const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
+ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
             const [queue, setQueue] = useState([]);
             const [currentIdx, setCurrentIdx] = useState(0);
             const [isFlipped, setIsFlipped] = useState(false);
@@ -1078,17 +1077,16 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
             
             const [isGeneratingNote, setIsGeneratingNote] = useState(false);
             const [syntaxLoading, setSyntaxLoading] = useState(false);
-            
             const [isFullscreen, setIsFullscreen] = useState(false);
-            // 模态框状态：content 初始为空
+            
+            // 模态框状态
             const [syntaxModal, setSyntaxModal] = useState({ open: false, content: '' });
-    // ... 在 StudySession 组件内部，原有 state 定义之后插入 ...
+            const [addMeaningModal, setAddMeaningModal] = useState({ open: false, pos: '', def: '' }); 
 
-            // --- 新增状态：撤回功能 & 快捷添加释义 ---
-            const [history, setHistory] = useState([]); // 撤回栈
-            const [addMeaningModal, setAddMeaningModal] = useState({ open: false, pos: '', def: '' }); // 添加释义弹窗
+            // 历史记录栈 (用于撤回)
+            const [history, setHistory] = useState([]);
 
-            // --- 新增逻辑：撤回上一步 ---
+            // --- 撤回上一步 ---
             const handleUndo = (e) => {
                 if(e) e.stopPropagation();
                 if (history.length === 0) return;
@@ -1106,7 +1104,7 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 setIsFinished(false); 
                 setIsFlipped(true); // 撤回后通常回到背面
 
-                // 3. 如果上次操作导致了追加复习（Rating 1/2），从队列末尾移除
+                // 3. 如果上次操作导致了追加复习，从队列末尾移除
                 if (lastAction.addedToQueue) {
                     setQueue(prev => prev.slice(0, prev.length - 1));
                 }
@@ -1114,7 +1112,7 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 setHistory(newHistory);
             };
 
-          // --- 新增逻辑：保存新释义 (🔥 修复：自动排序以合并同词性) ---
+            // --- 保存新释义 (自动排序以合并同词性) ---
             const handleSaveNewMeaning = () => {
                 if (!addMeaningModal.pos || !addMeaningModal.def) return alert("请填写词性和释义");
                 
@@ -1125,10 +1123,8 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     isMastered: false 
                 };
 
-                // 🔄 关键修复：按词性字母排序，确保渲染时相同词性的意思能合并在一起
                 const sortMeanings = (list) => [...list].sort((a, b) => a.pos.localeCompare(b.pos));
 
-                // 1. 更新全局 Words
                 const newWords = words.map(w => {
                     if (w.id === currentCard.id) {
                         return { ...w, meanings: sortMeanings([...w.meanings, newMeaningObj]) };
@@ -1138,7 +1134,6 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 setWords(newWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
 
-                // 2. 更新当前队列 (确保UI立即刷新)
                 const newQueue = [...queue];
                 newQueue[currentIdx] = { 
                     ...newQueue[currentIdx], 
@@ -1149,7 +1144,7 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 setAddMeaningModal({ open: false, pos: '', def: '' });
             };
 
-            // --- 🔥 新增逻辑：删除指定释义 ---
+            // --- 删除指定释义 ---
             const handleDeleteMeaning = (e, originalIdx) => {
                 e.stopPropagation();
                 if (!confirm("确定要删除这条释义吗？")) return;
@@ -1157,15 +1152,12 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 const currentMeanings = queue[currentIdx].meanings;
                 if (currentMeanings.length <= 1) return alert("至少保留一个释义，无法删除。");
 
-                // 根据索引过滤
                 const newMeanings = currentMeanings.filter((_, i) => i !== originalIdx);
 
-                // 更新队列
                 const newQueue = [...queue];
                 newQueue[currentIdx] = { ...newQueue[currentIdx], meanings: newMeanings };
                 setQueue(newQueue);
 
-                // 更新全局
                 const newWords = words.map(w => {
                     if (w.id === currentCard.id) {
                         return { ...w, meanings: newMeanings };
@@ -1225,39 +1217,27 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 return groups;
             }, [currentCard]);
 
-// --- 升级版评分逻辑：严格遵循“最差熟练度”原则 ---
+            // --- 评分逻辑 (含防刷 & 死磕模式) ---
             const handleRating = (rating) => {
                 const word = currentCard;
                 
-                // 1. 记录历史 (用于撤回)
                 setHistory(prev => [...prev, {
                     wordId: word.id,
-                    oldStats: word.stats, // 记录操作前的状态
+                    oldStats: word.stats,
                     idx: currentIdx,
-                    addedToQueue: rating === 1 || rating === 2 // 记录是否增加了队列
+                    addedToQueue: rating === 1 || rating === 2
                 }]);
 
-                // 🔥 核心修改：拦截“重复卡片”的“认识”操作
                 if (word.isRepeat) {
                     if (rating === 3) { 
-                        // 情况A：这是个回头客(之前点过不熟)，现在你点了“认识”。
-                        // 策略：只作为【今日巩固】，不修改它的长期记忆权重的。
-                        // 它的状态 (Interval, NextReview) 依然保持在第一次点“不熟”时被重置的样子。
-                        
-                        // 动作：仅切换UI到下一张，不保存数据，不修改 interval。
+                        // 重复卡片点认识 -> 仅今日通过，不改数据
                         setIsFlipped(false); 
                         setTimeout(() => currentIdx + 1 >= queue.length ? setIsFinished(true) : setCurrentIdx(prev => prev + 1), 200);
-                        return; // <--- 直接结束函数，不再执行后续的 updateWords
+                        return; 
                     }
-                    // 情况B：这是回头客，但你还是点了“不熟/不认识”。
-                    // 策略：继续死磕。代码会继续向下执行，再次重置它的状态，并再次插入队列。
                 }
 
-                // --- 以下为常规逻辑 (第一次遇到，或者在重复时依然不认识) ---
-
                 const currentStats = word.stats || { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0, lastReviewTime: 0 };
-                
-                // 计算新状态
                 const result = calculateNextReview(rating, currentStats.interval, currentStats.easeFactor, currentStats.reviewCount, currentStats.lastReviewTime);
                 
                 const newStats = { 
@@ -1268,22 +1248,16 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     lastReviewTime: Date.now()
                 };
                 
-                // 更新全局数据
                 const updatedWords = words.map(w => w.id === word.id ? { ...w, stats: newStats } : w);
                 setWords(updatedWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(updatedWords));
                 
-                // 🔥 智能队列插入：如果不熟，过几个词后再问你一次
                 if (result.isDueNow) {
                     setQueue(prev => {
                         const newQueue = [...prev];
-                        // 插入到当前位置之后的 3~6 个词之间，利用短时记忆进行“洗脑循环”
                         let insertOffset = 3 + Math.floor(Math.random() * 4); 
                         let insertIndex = currentIdx + 1 + insertOffset;
-
-                        // 标记 isRepeat: true，下次遇到它时，就算点了“认识”也不会改写它的“生词”身份
                         const repeatCard = { ...word, stats: newStats, isRepeat: true };
-
                         if (insertIndex >= newQueue.length) {
                             newQueue.push(repeatCard);
                         } else {
@@ -1293,18 +1267,16 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     });
                 }
                 
-                // 切换下一张
                 setIsFlipped(false); 
                 setTimeout(() => currentIdx + 1 >= queue.length ? setIsFinished(true) : setCurrentIdx(prev => prev + 1), 200);
             };
+
             const toggleMeaningMastery = (e, mIdx) => { e.stopPropagation(); const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], isMastered:!meanings[mIdx].isMastered, _forceShow:false}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); const newWords=[...words]; const idx=newWords.findIndex(w=>w.id===currentCard.id); if(idx!==-1){ newWords[idx]={...newWords[idx], meanings:meanings}; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); } };
             const toggleForceShow = (mIdx) => { const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], _forceShow:!meanings[mIdx]._forceShow}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); };
             
             const generateWordNote = async (e, forceRegenerate = false) => {
                 e.stopPropagation(); 
-                // 🔥 记忆检查：如果有且不是强制刷新，直接使用
                 if (!forceRegenerate && currentCard.aiNote) return;
-
                 if (!config.apiKey) { alert("请设置 API Key"); return; } 
                 setIsGeneratingNote(true); 
                 try {
@@ -1323,63 +1295,25 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 } catch(e){ alert("生成失败: " + e.message); } finally { setIsGeneratingNote(false); }
             };
 
-            // 🔥 长难句手术刀：带记忆功能
             const performSyntaxSurgery = async (e, forceRegenerate = false) => {
                 e.stopPropagation();
-                
-                // 1. 检查记忆
                 if (!forceRegenerate && currentCard.aiSyntax) {
                     setSyntaxModal({ open: true, content: currentCard.aiSyntax });
                     return;
                 }
-
                 if (!config.apiKey) return alert("请先配置 API Key");
                 setSyntaxLoading(true);
-                setSyntaxModal({ open: true, content: '' }); // 清空内容，显示 Loading
+                setSyntaxModal({ open: true, content: '' }); 
 
-                const prompt = `请作为考研英语专家，用单词 "${currentCard.word}" 造一个**考研真题难度**的长难句（约30词）。
-                然后进行【语法手术刀】分析。为了在手机上阅读清晰，**严禁使用 Markdown 表格**，请严格使用以下格式：
-
-                ### 🧬 考研长难句
-                > (这里写英文句子，将 **${currentCard.word}** 加粗)
-                
-                (这里写中文翻译，灰色字体)
-
-                ---
-
-                ### 🦴 核心骨架 (主干)
-                * **主语**：...
-                * **谓语**：...
-                * **宾语**：...
-
-                ### 🍃 修饰成分 (皮肉)
-                * **定语从句**：(摘录从句)... -> 修饰 (先行词)
-                * **状语**：(摘录)... -> 表示 (时间/原因等)
-                * **插入语/同位语**：...
-
-                ### 💡 语法考点
-                1.  **点 1**：(解释)
-                2.  **点 2**：(解释)
-                `;
+                const prompt = `请作为考研英语专家，用单词 "${currentCard.word}" 造一个**考研真题难度**的长难句（约30词）。然后进行【语法手术刀】分析。为了在手机上阅读清晰，**严禁使用 Markdown 表格**，请严格使用以下格式：\n\n### 🧬 考研长难句\n> (这里写英文句子，将 **${currentCard.word}** 加粗)\n\n(这里写中文翻译，灰色字体)\n\n---\n\n### 🦴 核心骨架 (主干)\n* **主语**：...\n* **谓语**：...\n* **宾语**：...\n\n### 🍃 修饰成分 (皮肉)\n* **定语从句**：(摘录从句)... -> 修饰 (先行词)\n* **状语**：(摘录)... -> 表示 (时间/原因等)\n* **插入语/同位语**：...\n\n### 💡 语法考点\n1.  **点 1**：(解释)\n2.  **点 2**：(解释)`;
 
                 try {
                     let fullText = "";
                     let baseUrl = config.baseUrl.replace(/\/$/, "");
                     if (!baseUrl.includes("/v1") && !baseUrl.includes("aliyuncs") && !baseUrl.includes("bigmodel")) baseUrl += "/v1";
-
-                    const response = await fetch(`${baseUrl}/chat/completions`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${config.apiKey}` },
-                        body: JSON.stringify({ 
-                            model: config.model, 
-                            messages: [{ role: "user", content: prompt }],
-                            stream: true 
-                        })
-                    });
-
+                    const response = await fetch(`${baseUrl}/chat/completions`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${config.apiKey}` }, body: JSON.stringify({ model: config.model, messages: [{ role: "user", content: prompt }], stream: true }) });
                     const reader = response.body.getReader();
                     const decoder = new TextDecoder("utf-8");
-
                     while (true) {
                         const { done, value } = await reader.read();
                         if (done) break;
@@ -1389,29 +1323,17 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                             if (line.startsWith("data: ")) {
                                 const data = line.slice(6);
                                 if (data === "[DONE]") break;
-                                try {
-                                    const json = JSON.parse(data);
-                                    const delta = json.choices[0]?.delta?.content || "";
-                                    fullText += delta;
-                                    setSyntaxModal(prev => ({ ...prev, content: fullText }));
-                                } catch (e) { }
+                                try { const json = JSON.parse(data); const delta = json.choices[0]?.delta?.content || ""; fullText += delta; setSyntaxModal(prev => ({ ...prev, content: fullText })); } catch (e) { }
                             }
                         }
                     }
-                    // 🔥 保存生成结果到单词对象
                     const newWords = [...words];
                     const targetWord = newWords.find(w => w.id === currentCard.id);
                     if(targetWord) targetWord.aiSyntax = fullText;
                     setWords(newWords);
                     localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
-                    // 更新队列状态
                     const newQueue = [...queue]; newQueue[currentIdx].aiSyntax = fullText; setQueue(newQueue);
-
-                } catch (e) {
-                    setSyntaxModal(prev => ({ ...prev, content: "**分析失败**：" + e.message }));
-                } finally {
-                    setSyntaxLoading(false);
-                }
+                } catch (e) { setSyntaxModal(prev => ({ ...prev, content: "**分析失败**：" + e.message })); } finally { setSyntaxLoading(false); }
             };
 
             if (queue.length === 0 && !isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full"><div className="bg-green-100 p-6 rounded-full mb-6 text-green-600"><Icon name="Check" size={48}/></div><h2 className="text-2xl font-bold text-gray-800 mb-2">当前任务完成</h2><p className="text-gray-500 mb-8">休息一下，稍后再来！</p><button onClick={onExit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95">返回首页</button></div></div>;
@@ -1423,32 +1345,18 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                         <div className="h-full bg-indigo-600 transition-all duration-300 ease-out" style={{width: `${(currentIdx / queue.length) * 100}%`}}></div>
                     </div>
                     
-                    <button onClick={onExit} className="absolute top-4 left-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title="退出">
-                        <Icon name="ArrowLeft" size={24}/>
-                    </button>
-
-                    {/* 新增：撤回按钮 (放在返回按钮右侧) */}
-                    <button 
-                        onClick={(e) => {e.stopPropagation(); handleUndo(e);}} 
-                        disabled={history.length === 0} 
-                        className={`absolute top-4 left-16 z-20 p-2.5 backdrop-blur rounded-full shadow-md transition ${history.length === 0 ? 'bg-gray-200/50 text-gray-400 cursor-not-allowed' : 'bg-white/80 text-gray-600 hover:text-indigo-600 hover:bg-white'}`} 
-                        title="撤回上一步"
-                    >
-                        <Icon name="RotateCcw" size={24}/>
-                    </button>
+                    <button onClick={onExit} className="absolute top-4 left-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title="退出"><Icon name="ArrowLeft" size={24}/></button>
                     
-                    <button onClick={toggleFullscreen} className="absolute top-4 right-16 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title={isFullscreen ? "退出全屏" : "全屏模式"}>
-                        <Icon name={isFullscreen ? "Minimize" : "Maximize"} size={24}/>
-                    </button>
-
-                    <button onClick={(e)=>{e.stopPropagation(); setChatSession(currentCard.word);}} className="absolute top-4 right-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-indigo-500 hover:text-white hover:bg-indigo-500 transition" title="AI 详解">
-                        <Icon name="MessageCircle" size={24}/>
-                    </button>
+                    {/* 撤回按钮 */}
+                    <button onClick={(e) => {e.stopPropagation(); handleUndo(e);}} disabled={history.length === 0} className={`absolute top-4 left-16 z-20 p-2.5 backdrop-blur rounded-full shadow-md transition ${history.length === 0 ? 'bg-gray-200/50 text-gray-400 cursor-not-allowed' : 'bg-white/80 text-gray-600 hover:text-indigo-600 hover:bg-white'}`} title="撤回上一步"><Icon name="RotateCcw" size={24}/></button>
+                    
+                    <button onClick={toggleFullscreen} className="absolute top-4 right-16 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title={isFullscreen ? "退出全屏" : "全屏模式"}><Icon name={isFullscreen ? "Minimize" : "Maximize"} size={24}/></button>
+                    <button onClick={(e)=>{e.stopPropagation(); setChatSession(currentCard.word);}} className="absolute top-4 right-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-indigo-500 hover:text-white hover:bg-indigo-500 transition" title="AI 详解"><Icon name="MessageCircle" size={24}/></button>
 
                     <div className="flex-1 flex items-center justify-center p-4 md:p-8 overflow-hidden">
                         <div className="relative scene w-full max-w-sm md:max-w-3xl aspect-[3/4] md:aspect-[4/3] max-h-[85vh]">
                             <div className={`card-object ${isFlipped ? 'is-flipped' : ''}`} onClick={() => setIsFlipped(!isFlipped)}>
-                                {/* 卡片正面 */}
+                                {/* 正面 */}
                                 <div className="card-face flex flex-col items-center justify-center p-8 md:p-12 text-center bg-gradient-to-br from-white to-gray-50 border border-white">
                                     <div className="flex-1 flex flex-col items-center justify-center w-full">
                                         <h1 className="text-5xl md:text-7xl lg:text-8xl font-black text-gray-800 mb-6 md:mb-10 tracking-tight">{currentCard.word}</h1>
@@ -1458,108 +1366,60 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                                     </div>
                                     <div className="mt-auto text-gray-400 text-sm md:text-base animate-pulse font-medium">点击翻转查看释义</div>
                                 </div>
-                                
-                                {/* 卡片背面 */}
+                                {/* 背面 */}
                                 <div className="card-face card-face-back p-0 bg-white">
                                     <div className="flex-shrink-0 bg-white/95 backdrop-blur border-b border-gray-100 p-4 md:p-6 flex justify-between items-center z-10 shadow-sm">
                                         <h2 className="text-2xl md:text-4xl font-bold text-indigo-900">{currentCard.word}</h2>
                                         <button onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}} className="p-3 bg-indigo-50 rounded-full text-indigo-600 hover:bg-indigo-100 transition"><Icon name="Volume2" size={24}/></button>
                                     </div>
-<div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 space-y-4 md:space-y-6">
+                                    
+                                    <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 space-y-4 md:space-y-6">
                                         {groupedMeanings.map((group, gIdx) => (
                                             <div key={gIdx} className="relative bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
-                                                {/* 词性标签 */}
-                                                <div className="absolute -top-3 -left-1 z-10">
-                                                    <span className="text-xs md:text-sm font-bold bg-indigo-100 text-indigo-700 px-3 py-1 rounded-lg border border-indigo-200 shadow-sm uppercase tracking-wide">{group.pos}</span>
-                                                </div>
-                                                
+                                                <div className="absolute -top-3 -left-1 z-10"><span className="text-xs md:text-sm font-bold bg-indigo-100 text-indigo-700 px-3 py-1 rounded-lg border border-indigo-200 shadow-sm uppercase tracking-wide">{group.pos}</span></div>
                                                 <div className="pt-4 pb-1 px-1">
                                                     {group.items.map((m, subIdx) => {
                                                         const isHidden = m.isMastered && !m._forceShow;
                                                         return (
                                                             <div key={subIdx} className={`p-4 md:p-5 ${subIdx !== group.items.length - 1 ? 'border-b border-dashed border-gray-100' : ''}`}>
                                                                 <div className="flex justify-between items-start gap-3">
-                                                                    {/* 释义文本区 */}
                                                                     <div className="flex-1 min-h-[1.5rem] flex items-center">
                                                                         {isHidden ? (
-                                                                            <div onClick={(e) => { e.stopPropagation(); toggleForceShow(m.originalIdx); }} className="bg-gray-50 text-gray-400 text-xs md:text-sm py-2 px-3 rounded-lg cursor-pointer flex items-center select-none hover:bg-gray-100 transition border border-dashed border-gray-200 w-full">
-                                                                                <Icon name="EyeOff" size={14} className="mr-2"/> 释义已隐藏
-                                                                            </div>
+                                                                            <div onClick={(e) => { e.stopPropagation(); toggleForceShow(m.originalIdx); }} className="bg-gray-50 text-gray-400 text-xs md:text-sm py-2 px-3 rounded-lg cursor-pointer flex items-center select-none hover:bg-gray-100 transition border border-dashed border-gray-200 w-full"><Icon name="EyeOff" size={14} className="mr-2"/> 释义已隐藏</div>
                                                                         ) : (
                                                                             <div className="text-gray-800 font-medium text-lg md:text-2xl leading-relaxed">{m.def}</div>
                                                                         )}
                                                                     </div>
-
-                                                                    {/* 🔥 按钮操作区：改为纵向排列 (小眼睛在上，垃圾桶在下) */}
                                                                     <div className="flex flex-col items-center gap-2">
-                                                                        <button onClick={(e) => toggleMeaningMastery(e, m.originalIdx)} className={`p-2 rounded-lg transition active:scale-95 ${m.isMastered ? 'text-gray-400 bg-gray-50' : 'text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50'}`} title={m.isMastered ? "显示" : "隐藏"}>
-                                                                            {m.isMastered ? <Icon name="EyeOff" size={20} /> : <Icon name="Eye" size={20} /> }
-                                                                        </button>
-                                                                        
-                                                                        {/* 新增：删除按钮 */}
-                                                                        <button onClick={(e) => handleDeleteMeaning(e, m.originalIdx)} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition active:scale-95" title="删除此释义">
-                                                                            <Icon name="Trash2" size={16} />
-                                                                        </button>
+                                                                        <button onClick={(e) => toggleMeaningMastery(e, m.originalIdx)} className={`p-2 rounded-lg transition active:scale-95 ${m.isMastered ? 'text-gray-400 bg-gray-50' : 'text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50'}`}>{m.isMastered ? <Icon name="EyeOff" size={20} /> : <Icon name="Eye" size={20} /> }</button>
+                                                                        <button onClick={(e) => handleDeleteMeaning(e, m.originalIdx)} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition active:scale-95"><Icon name="Trash2" size={16} /></button>
                                                                     </div>
                                                                 </div>
                                                             </div>
                                                         );
                                                     })}
-                                                    {/* 组内快捷添加 (可选：点这个按钮会自动填入当前组的词性) */}
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); setAddMeaningModal({ open: true, pos: group.pos, def: '' }); }}
-                                                        className="w-full py-2 mt-1 mb-1 border-t border-dashed border-gray-50 text-gray-200 hover:text-indigo-400 hover:bg-indigo-50 transition flex items-center justify-center text-xs opacity-0 group-hover:opacity-100"
-                                                        title={`继续添加 ${group.pos} 释义`}
-                                                    >
-                                                        <Icon name="PlusCircle" size={12}/>
-                                                    </button>
+                                                    <button onClick={(e) => { e.stopPropagation(); setAddMeaningModal({ open: true, pos: group.pos, def: '' }); }} className="w-full py-2 mt-1 mb-1 border-t border-dashed border-gray-50 text-gray-200 hover:text-indigo-400 hover:bg-indigo-50 transition flex items-center justify-center text-xs opacity-0 group-hover:opacity-100"><Icon name="PlusCircle" size={12}/></button>
                                                 </div>
                                             </div>
                                         ))}
+                                        <button onClick={(e) => { e.stopPropagation(); setAddMeaningModal({ open: true, pos: 'adj.', def: '' }); }} className="w-full py-3 mt-4 mb-2 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 hover:text-indigo-500 hover:border-indigo-300 hover:bg-indigo-50 transition flex items-center justify-center font-bold text-sm"><span className="mr-2"><Icon name="PlusCircle" size={18}/></span> 补充新词性/释义</button>
                                         
-                                        {/* 底部大按钮：补充全新释义 */}
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); setAddMeaningModal({ open: true, pos: 'adj.', def: '' }); }}
-                                            className="w-full py-3 mt-4 mb-2 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 hover:text-indigo-500 hover:border-indigo-300 hover:bg-indigo-50 transition flex items-center justify-center font-bold text-sm"
-                                        >
-                                            <span className="mr-2"><Icon name="PlusCircle" size={18}/></span> 补充新词性/释义
-                                        </button>
-                                    </div>
-
-                                        {/* 🔥 功能操作区 */}
                                         <div className="mt-6 mb-2 grid grid-cols-2 gap-3">
-                                            {/* 1. 避坑指南 */}
                                             <button onClick={(e) => generateWordNote(e, false)} disabled={isGeneratingNote} className="py-4 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-2xl text-orange-600 font-bold flex flex-col items-center justify-center transition active:scale-95 group relative">
-                                                {isGeneratingNote ? <div className="w-5 h-5 border-2 border-orange-400 border-t-transparent rounded-full animate-spin"></div> : 
-                                                    <>
-                                                        <span className="flex items-center"><span className="text-lg mr-2">🕵️‍♂️</span> 避坑指南</span>
-                                                        {currentCard.aiNote && <div className="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full"></div>}
-                                                    </>
-                                                }
+                                                {isGeneratingNote ? <div className="w-5 h-5 border-2 border-orange-400 border-t-transparent rounded-full animate-spin"></div> : <><span className="flex items-center"><span className="text-lg mr-2">🕵️‍♂️</span> 避坑指南</span>{currentCard.aiNote && <div className="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full"></div>}</>}
                                             </button>
-                                            {/* 2. 长难句手术刀 */}
                                             <button onClick={(e) => performSyntaxSurgery(e, false)} disabled={syntaxLoading} className="py-4 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-2xl text-purple-600 font-bold flex flex-col items-center justify-center transition active:scale-95 relative">
-                                                {syntaxLoading ? <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div> : 
-                                                    <>
-                                                        <span className="flex items-center"><span className="text-lg mr-2">🧬</span> 长难句切片</span>
-                                                        {currentCard.aiSyntax && <div className="absolute top-2 right-2 w-2 h-2 bg-purple-500 rounded-full"></div>}
-                                                    </>
-                                                }
+                                                {syntaxLoading ? <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div> : <><span className="flex items-center"><span className="text-lg mr-2">🧬</span> 长难句切片</span>{currentCard.aiSyntax && <div className="absolute top-2 right-2 w-2 h-2 bg-purple-500 rounded-full"></div>}</>}
                                             </button>
                                         </div>
                                         
-                                        {/* 动态笔记展示区 (支持重置) */}
                                         {currentCard.aiNote && (
                                             <div className="bg-orange-50 rounded-2xl border border-orange-100 p-5 shadow-sm animate-fade-in relative group">
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <span className="text-orange-800 font-bold flex items-center"><span className="text-xl mr-2">🔥</span> 避坑 & 辨析</span>
-                                                    <button onClick={(e)=>generateWordNote(e, true)} className="text-orange-400 hover:text-orange-600 text-xs bg-white/50 px-2 py-1 rounded border border-orange-200 transition">🔄 刷新</button>
-                                                </div>
+                                                <div className="flex items-center justify-between mb-3"><span className="text-orange-800 font-bold flex items-center"><span className="text-xl mr-2">🔥</span> 避坑 & 辨析</span><button onClick={(e)=>generateWordNote(e, true)} className="text-orange-400 hover:text-orange-600 text-xs bg-white/50 px-2 py-1 rounded border border-orange-200 transition">🔄 刷新</button></div>
                                                 <div className="markdown-body text-sm text-gray-700 leading-relaxed" dangerouslySetInnerHTML={{ __html: marked.parse(currentCard.aiNote) }} />
                                             </div>
                                         )}
-                                        
-                                        <div className="h-20"></div> 
+                                        <div className="h-20"></div>
                                     </div>
                                     <div className="flex-shrink-0 absolute bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 md:p-6 flex space-x-3 md:space-x-6 shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.1)] z-20">
                                         <button onClick={(e)=>{e.stopPropagation();handleRating(1);}} className="flex-1 btn-press bg-red-50 hover:bg-red-100 text-red-600 py-4 md:py-5 rounded-xl font-bold text-base md:text-lg flex flex-col items-center transition-colors border border-red-100"><span>不认识</span></button>
@@ -1578,52 +1438,25 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                                 <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-purple-50">
                                     <h3 className="font-bold text-purple-900 flex items-center"><span className="text-xl mr-2">🧬</span> 语法手术台</h3>
                                     <div className="flex items-center gap-2">
-                                        {/* 🔄 重置按钮 */}
                                         <button onClick={(e) => performSyntaxSurgery(e, true)} className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 text-xs font-bold rounded-lg transition flex items-center"><span className="mr-1">🔄</span> 重新生成</button>
                                         <button onClick={() => setSyntaxModal({ ...syntaxModal, open: false })} className="p-2 hover:bg-purple-100 rounded-full text-purple-800"><Icon name="X" size={20} /></button>
                                     </div>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-6 custom-scroll bg-white">
-                                    {syntaxModal.content ? (
-                                        <div className="markdown-body text-gray-800 leading-relaxed space-y-4" dangerouslySetInnerHTML={{ __html: marked.parse(syntaxModal.content) }} />
-                                    ) : (
-                                        <div className="flex flex-col items-center justify-center h-full space-y-4 text-purple-400">
-                                            <div className="w-10 h-10 border-4 border-purple-200 border-t-purple-500 rounded-full animate-spin"></div>
-                                            <p>正在构造长难句并进行解剖...</p>
-                                        </div>
-                                    )}
+                                    {syntaxModal.content ? ( <div className="markdown-body text-gray-800 leading-relaxed space-y-4" dangerouslySetInnerHTML={{ __html: marked.parse(syntaxModal.content) }} /> ) : ( <div className="flex flex-col items-center justify-center h-full space-y-4 text-purple-400"><div className="w-10 h-10 border-4 border-purple-200 border-t-purple-500 rounded-full animate-spin"></div><p>正在构造长难句并进行解剖...</p></div> )}
                                 </div>
                             </div>
                         </div>
                     )}
-                    {/* 新增：快捷添加释义弹窗 */}
+
+                    {/* 快捷添加释义弹窗 */}
                     {addMeaningModal.open && (
                         <div className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setAddMeaningModal({ ...addMeaningModal, open: false })}>
                             <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
                                 <h3 className="text-lg font-bold text-gray-800 mb-4">补充新释义</h3>
                                 <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">词性</label>
-                                        <input 
-                                            type="text" 
-                                            value={addMeaningModal.pos} 
-                                            onChange={e => setAddMeaningModal({ ...addMeaningModal, pos: e.target.value })} 
-                                            placeholder="例如: n. / vt." 
-                                            className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">意思</label>
-                                        <input 
-                                            type="text" 
-                                            value={addMeaningModal.def} 
-                                            onChange={e => setAddMeaningModal({ ...addMeaningModal, def: e.target.value })} 
-                                            placeholder="输入中文释义..." 
-                                            className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
-                                            onKeyDown={e => {if(e.key === 'Enter') handleSaveNewMeaning();}}
-                                            autoFocus
-                                        />
-                                    </div>
+                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">词性</label><input type="text" value={addMeaningModal.pos} onChange={e => setAddMeaningModal({ ...addMeaningModal, pos: e.target.value })} placeholder="例如: n. / vt." className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"/></div>
+                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">意思</label><input type="text" value={addMeaningModal.def} onChange={e => setAddMeaningModal({ ...addMeaningModal, def: e.target.value })} placeholder="输入中文释义..." className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" onKeyDown={e => {if(e.key === 'Enter') handleSaveNewMeaning();}} autoFocus /></div>
                                 </div>
                                 <div className="flex gap-3 mt-6">
                                     <button onClick={() => setAddMeaningModal({ ...addMeaningModal, open: false })} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">取消</button>
