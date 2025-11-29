@@ -170,18 +170,36 @@
             }
         };
 
-        const calculateNextReview = (rating, currentInterval, easeFactor, currentReviewCount) => {
+// 🔥 核心修复：优化算法，防止一天内重复刷导致间隔暴涨，并优化“不熟”单词的重现频率
+        const calculateNextReview = (rating, currentInterval, easeFactor, currentReviewCount, lastReviewTime) => {
+            const now = Date.now();
+            // 判定是否为“同一天内的短期重复” (例如：距离上次复习小于 16 小时)
+            const isSameDayRepeat = lastReviewTime && (now - lastReviewTime < 16 * 60 * 60 * 1000);
+
             let nextInterval, nextEaseFactor = easeFactor;
             const newReviewCount = (currentReviewCount || 0) + 1;
-            if (rating === 1) { 
+
+            if (rating === 1) { // 不认识
+                // 无论何时，不认识直接重置
                 return { interval: 0, easeFactor: Math.max(1.3, easeFactor - 0.2), isDueNow: true, reviewCount: newReviewCount };
-            } else if (rating === 2) { 
+            } else if (rating === 2) { // 不熟
+                // 变成 0.5 (约12小时后)，进入短期高频复习流
                 return { interval: 0.5, easeFactor: Math.max(1.3, easeFactor - 0.15), isDueNow: true, reviewCount: newReviewCount }; 
-            } else { 
-                if (currentInterval === 0) nextInterval = 1; 
-                else if (currentInterval === 1) nextInterval = 3;
-                else nextInterval = Math.round(currentInterval * easeFactor);
-                return { interval: nextInterval, easeFactor: easeFactor + 0.1, isDueNow: false, reviewCount: newReviewCount };
+            } else { // 认识 (Rating 3)
+                if (isSameDayRepeat && currentInterval > 0) {
+                    // 🔥 重点逻辑：如果是同一天内重复复习已掌握的词，只作为巩固
+                    // 保持原间隔不变，不增加 EaseFactor，防止“刷绿”过快
+                    nextInterval = currentInterval;
+                } else {
+                    // 正常的跨天复习逻辑
+                    if (currentInterval === 0) nextInterval = 1;
+                    else if (currentInterval <= 0.5) nextInterval = 1; // 修正小数间隔
+                    else if (currentInterval === 1) nextInterval = 3;
+                    else nextInterval = Math.round(currentInterval * easeFactor);
+                    
+                    nextEaseFactor = easeFactor + 0.1;
+                }
+                return { interval: nextInterval, easeFactor: nextEaseFactor, isDueNow: false, reviewCount: newReviewCount };
             }
         };
 
@@ -1174,27 +1192,54 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 return groups;
             }, [currentCard]);
 
-           // --- 修改后的评分逻辑：加入历史记录 ---
+        // --- 修改后的评分逻辑：加入间隔保护 & 智能队列插入 ---
             const handleRating = (rating) => {
                 const word = currentCard;
                 
-                // 1. 🔥 核心修改：在改变状态前，将当前快照压入历史栈
+                // 1. 历史记录 (用于撤回)
                 setHistory(prev => [...prev, {
                     wordId: word.id,
-                    oldStats: word.stats, // 保存修改前的 stats 用于恢复
-                    idx: currentIdx,      // 保存当前队列索引
-                    addedToQueue: rating === 1 || rating === 2 // 记录这次操作是否导致了追加复习
+                    oldStats: word.stats,
+                    idx: currentIdx,
+                    addedToQueue: rating === 1 || rating === 2
                 }]);
 
-                const currentStats = word.stats || { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 };
-                const result = calculateNextReview(rating, currentStats.interval, currentStats.easeFactor, currentStats.reviewCount);
-                const newStats = { interval: result.interval, easeFactor: result.easeFactor, nextReview: Date.now() + (result.interval * 24 * 60 * 60 * 1000), reviewCount: result.reviewCount };
+                const currentStats = word.stats || { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0, lastReviewTime: 0 };
+                
+                // 传入 lastReviewTime 进行判断
+                const result = calculateNextReview(rating, currentStats.interval, currentStats.easeFactor, currentStats.reviewCount, currentStats.lastReviewTime);
+                
+                // 更新 stats，同时记录本次复习时间 lastReviewTime
+                const newStats = { 
+                    interval: result.interval, 
+                    easeFactor: result.easeFactor, 
+                    nextReview: Date.now() + (result.interval * 24 * 60 * 60 * 1000), 
+                    reviewCount: result.reviewCount,
+                    lastReviewTime: Date.now() // 🔥 记录当前时间
+                };
                 
                 const updatedWords = words.map(w => w.id === word.id ? { ...w, stats: newStats } : w);
                 setWords(updatedWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(updatedWords));
                 
-                if (result.isDueNow) setQueue(prev => [...prev, { ...word, stats: newStats, isRepeat: true }]);
+                // 2. 🔥 核心修改：智能队列插入
+                if (result.isDueNow) {
+                    setQueue(prev => {
+                        const newQueue = [...prev];
+                        // 算法：不要直接放到最后，而是插入到当前位置之后的 3 到 6 个单词之间
+                        // 这样可以在几分钟内再次遇到，达到“短时多次巩固”的效果
+                        let insertOffset = 3 + Math.floor(Math.random() * 4); // 随机 3, 4, 5, 6
+                        let insertIndex = currentIdx + 1 + insertOffset;
+
+                        // 边界检查：如果队列没那么长，就放到最后
+                        if (insertIndex >= newQueue.length) {
+                            newQueue.push({ ...word, stats: newStats, isRepeat: true });
+                        } else {
+                            newQueue.splice(insertIndex, 0, { ...word, stats: newStats, isRepeat: true });
+                        }
+                        return newQueue;
+                    });
+                }
                 
                 setIsFlipped(false); 
                 setTimeout(() => currentIdx + 1 >= queue.length ? setIsFinished(true) : setCurrentIdx(prev => prev + 1), 200);
