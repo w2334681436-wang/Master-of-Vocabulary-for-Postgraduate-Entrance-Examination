@@ -1192,59 +1192,78 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 return groups;
             }, [currentCard]);
 
-        // --- 修改后的评分逻辑：加入间隔保护 & 智能队列插入 ---
+// --- 升级版评分逻辑：严格遵循“最差熟练度”原则 ---
             const handleRating = (rating) => {
                 const word = currentCard;
                 
-                // 1. 历史记录 (用于撤回)
+                // 1. 记录历史 (用于撤回)
                 setHistory(prev => [...prev, {
                     wordId: word.id,
-                    oldStats: word.stats,
+                    oldStats: word.stats, // 记录操作前的状态
                     idx: currentIdx,
-                    addedToQueue: rating === 1 || rating === 2
+                    addedToQueue: rating === 1 || rating === 2 // 记录是否增加了队列
                 }]);
+
+                // 🔥 核心修改：拦截“重复卡片”的“认识”操作
+                if (word.isRepeat) {
+                    if (rating === 3) { 
+                        // 情况A：这是个回头客(之前点过不熟)，现在你点了“认识”。
+                        // 策略：只作为【今日巩固】，不修改它的长期记忆权重的。
+                        // 它的状态 (Interval, NextReview) 依然保持在第一次点“不熟”时被重置的样子。
+                        
+                        // 动作：仅切换UI到下一张，不保存数据，不修改 interval。
+                        setIsFlipped(false); 
+                        setTimeout(() => currentIdx + 1 >= queue.length ? setIsFinished(true) : setCurrentIdx(prev => prev + 1), 200);
+                        return; // <--- 直接结束函数，不再执行后续的 updateWords
+                    }
+                    // 情况B：这是回头客，但你还是点了“不熟/不认识”。
+                    // 策略：继续死磕。代码会继续向下执行，再次重置它的状态，并再次插入队列。
+                }
+
+                // --- 以下为常规逻辑 (第一次遇到，或者在重复时依然不认识) ---
 
                 const currentStats = word.stats || { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0, lastReviewTime: 0 };
                 
-                // 传入 lastReviewTime 进行判断
+                // 计算新状态
                 const result = calculateNextReview(rating, currentStats.interval, currentStats.easeFactor, currentStats.reviewCount, currentStats.lastReviewTime);
                 
-                // 更新 stats，同时记录本次复习时间 lastReviewTime
                 const newStats = { 
                     interval: result.interval, 
                     easeFactor: result.easeFactor, 
                     nextReview: Date.now() + (result.interval * 24 * 60 * 60 * 1000), 
                     reviewCount: result.reviewCount,
-                    lastReviewTime: Date.now() // 🔥 记录当前时间
+                    lastReviewTime: Date.now()
                 };
                 
+                // 更新全局数据
                 const updatedWords = words.map(w => w.id === word.id ? { ...w, stats: newStats } : w);
                 setWords(updatedWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(updatedWords));
                 
-                // 2. 🔥 核心修改：智能队列插入
+                // 🔥 智能队列插入：如果不熟，过几个词后再问你一次
                 if (result.isDueNow) {
                     setQueue(prev => {
                         const newQueue = [...prev];
-                        // 算法：不要直接放到最后，而是插入到当前位置之后的 3 到 6 个单词之间
-                        // 这样可以在几分钟内再次遇到，达到“短时多次巩固”的效果
-                        let insertOffset = 3 + Math.floor(Math.random() * 4); // 随机 3, 4, 5, 6
+                        // 插入到当前位置之后的 3~6 个词之间，利用短时记忆进行“洗脑循环”
+                        let insertOffset = 3 + Math.floor(Math.random() * 4); 
                         let insertIndex = currentIdx + 1 + insertOffset;
 
-                        // 边界检查：如果队列没那么长，就放到最后
+                        // 标记 isRepeat: true，下次遇到它时，就算点了“认识”也不会改写它的“生词”身份
+                        const repeatCard = { ...word, stats: newStats, isRepeat: true };
+
                         if (insertIndex >= newQueue.length) {
-                            newQueue.push({ ...word, stats: newStats, isRepeat: true });
+                            newQueue.push(repeatCard);
                         } else {
-                            newQueue.splice(insertIndex, 0, { ...word, stats: newStats, isRepeat: true });
+                            newQueue.splice(insertIndex, 0, repeatCard);
                         }
                         return newQueue;
                     });
                 }
                 
+                // 切换下一张
                 setIsFlipped(false); 
                 setTimeout(() => currentIdx + 1 >= queue.length ? setIsFinished(true) : setCurrentIdx(prev => prev + 1), 200);
             };
-
             const toggleMeaningMastery = (e, mIdx) => { e.stopPropagation(); const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], isMastered:!meanings[mIdx].isMastered, _forceShow:false}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); const newWords=[...words]; const idx=newWords.findIndex(w=>w.id===currentCard.id); if(idx!==-1){ newWords[idx]={...newWords[idx], meanings:meanings}; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); } };
             const toggleForceShow = (mIdx) => { const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], _forceShow:!meanings[mIdx]._forceShow}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); };
             
