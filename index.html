@@ -1114,7 +1114,7 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 setHistory(newHistory);
             };
 
-            // --- 新增逻辑：保存新释义 ---
+          // --- 新增逻辑：保存新释义 (🔥 修复：自动排序以合并同词性) ---
             const handleSaveNewMeaning = () => {
                 if (!addMeaningModal.pos || !addMeaningModal.def) return alert("请填写词性和释义");
                 
@@ -1125,22 +1125,55 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     isMastered: false 
                 };
 
+                // 🔄 关键修复：按词性字母排序，确保渲染时相同词性的意思能合并在一起
+                const sortMeanings = (list) => [...list].sort((a, b) => a.pos.localeCompare(b.pos));
+
                 // 1. 更新全局 Words
                 const newWords = words.map(w => {
                     if (w.id === currentCard.id) {
-                        return { ...w, meanings: [...w.meanings, newMeaningObj] };
+                        return { ...w, meanings: sortMeanings([...w.meanings, newMeaningObj]) };
                     }
                     return w;
                 });
                 setWords(newWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
 
-                // 2. 更新当前队列中的卡片 (确保UI立即刷新)
+                // 2. 更新当前队列 (确保UI立即刷新)
                 const newQueue = [...queue];
-                newQueue[currentIdx] = { ...newQueue[currentIdx], meanings: [...newQueue[currentIdx].meanings, newMeaningObj] };
+                newQueue[currentIdx] = { 
+                    ...newQueue[currentIdx], 
+                    meanings: sortMeanings([...newQueue[currentIdx].meanings, newMeaningObj]) 
+                };
                 setQueue(newQueue);
 
                 setAddMeaningModal({ open: false, pos: '', def: '' });
+            };
+
+            // --- 🔥 新增逻辑：删除指定释义 ---
+            const handleDeleteMeaning = (e, originalIdx) => {
+                e.stopPropagation();
+                if (!confirm("确定要删除这条释义吗？")) return;
+
+                const currentMeanings = queue[currentIdx].meanings;
+                if (currentMeanings.length <= 1) return alert("至少保留一个释义，无法删除。");
+
+                // 根据索引过滤
+                const newMeanings = currentMeanings.filter((_, i) => i !== originalIdx);
+
+                // 更新队列
+                const newQueue = [...queue];
+                newQueue[currentIdx] = { ...newQueue[currentIdx], meanings: newMeanings };
+                setQueue(newQueue);
+
+                // 更新全局
+                const newWords = words.map(w => {
+                    if (w.id === currentCard.id) {
+                        return { ...w, meanings: newMeanings };
+                    }
+                    return w;
+                });
+                setWords(newWords);
+                localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
             };
 
             useEffect(() => {
@@ -1432,18 +1465,21 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                                         <h2 className="text-2xl md:text-4xl font-bold text-indigo-900">{currentCard.word}</h2>
                                         <button onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}} className="p-3 bg-indigo-50 rounded-full text-indigo-600 hover:bg-indigo-100 transition"><Icon name="Volume2" size={24}/></button>
                                     </div>
-                                    <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 space-y-4 md:space-y-6">
+<div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 space-y-4 md:space-y-6">
                                         {groupedMeanings.map((group, gIdx) => (
                                             <div key={gIdx} className="relative bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
+                                                {/* 词性标签 */}
                                                 <div className="absolute -top-3 -left-1 z-10">
                                                     <span className="text-xs md:text-sm font-bold bg-indigo-100 text-indigo-700 px-3 py-1 rounded-lg border border-indigo-200 shadow-sm uppercase tracking-wide">{group.pos}</span>
                                                 </div>
+                                                
                                                 <div className="pt-4 pb-1 px-1">
                                                     {group.items.map((m, subIdx) => {
                                                         const isHidden = m.isMastered && !m._forceShow;
                                                         return (
                                                             <div key={subIdx} className={`p-4 md:p-5 ${subIdx !== group.items.length - 1 ? 'border-b border-dashed border-gray-100' : ''}`}>
                                                                 <div className="flex justify-between items-start gap-3">
+                                                                    {/* 释义文本区 */}
                                                                     <div className="flex-1 min-h-[1.5rem] flex items-center">
                                                                         {isHidden ? (
                                                                             <div onClick={(e) => { e.stopPropagation(); toggleForceShow(m.originalIdx); }} className="bg-gray-50 text-gray-400 text-xs md:text-sm py-2 px-3 rounded-lg cursor-pointer flex items-center select-none hover:bg-gray-100 transition border border-dashed border-gray-200 w-full">
@@ -1453,23 +1489,42 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                                                                             <div className="text-gray-800 font-medium text-lg md:text-2xl leading-relaxed">{m.def}</div>
                                                                         )}
                                                                     </div>
-                                                                    <button onClick={(e) => toggleMeaningMastery(e, m.originalIdx)} className={`flex-shrink-0 p-2 rounded-lg transition active:scale-95 ${m.isMastered ? 'text-gray-400 bg-gray-50' : 'text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50'}`}>
-                                                                        {m.isMastered ? <Icon name="EyeOff" size={20} /> : <Icon name="Eye" size={20} /> }
-                                                                    </button>
+
+                                                                    {/* 🔥 按钮操作区：改为纵向排列 (小眼睛在上，垃圾桶在下) */}
+                                                                    <div className="flex flex-col items-center gap-2">
+                                                                        <button onClick={(e) => toggleMeaningMastery(e, m.originalIdx)} className={`p-2 rounded-lg transition active:scale-95 ${m.isMastered ? 'text-gray-400 bg-gray-50' : 'text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50'}`} title={m.isMastered ? "显示" : "隐藏"}>
+                                                                            {m.isMastered ? <Icon name="EyeOff" size={20} /> : <Icon name="Eye" size={20} /> }
+                                                                        </button>
+                                                                        
+                                                                        {/* 新增：删除按钮 */}
+                                                                        <button onClick={(e) => handleDeleteMeaning(e, m.originalIdx)} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition active:scale-95" title="删除此释义">
+                                                                            <Icon name="Trash2" size={16} />
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         );
                                                     })}
-                                                    {/* 新增：快捷添加释义按钮 (放在释义列表下方) */}
+                                                    {/* 组内快捷添加 (可选：点这个按钮会自动填入当前组的词性) */}
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); setAddMeaningModal({ open: true, pos: group.pos, def: '' }); }}
+                                                        className="w-full py-2 mt-1 mb-1 border-t border-dashed border-gray-50 text-gray-200 hover:text-indigo-400 hover:bg-indigo-50 transition flex items-center justify-center text-xs opacity-0 group-hover:opacity-100"
+                                                        title={`继续添加 ${group.pos} 释义`}
+                                                    >
+                                                        <Icon name="PlusCircle" size={12}/>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        
+                                        {/* 底部大按钮：补充全新释义 */}
                                         <button 
                                             onClick={(e) => { e.stopPropagation(); setAddMeaningModal({ open: true, pos: 'adj.', def: '' }); }}
                                             className="w-full py-3 mt-4 mb-2 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 hover:text-indigo-500 hover:border-indigo-300 hover:bg-indigo-50 transition flex items-center justify-center font-bold text-sm"
                                         >
-                                            <span className="mr-2"><Icon name="PlusCircle" size={18}/></span> 补充新释义
+                                            <span className="mr-2"><Icon name="PlusCircle" size={18}/></span> 补充新词性/释义
                                         </button>
-                                                </div>
-                                            </div>
-                                        ))}
+                                    </div>
 
                                         {/* 🔥 功能操作区 */}
                                         <div className="mt-6 mb-2 grid grid-cols-2 gap-3">
