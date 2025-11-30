@@ -1009,7 +1009,7 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
             // 历史记录栈
             const [history, setHistory] = useState([]);
 
-            // 🔥 预设词性列表 (显示中文，存入缩写)
+            // 🔥 预设词性列表
             const POS_OPTIONS = [
                 { val: "n.", label: "n. 名词" },
                 { val: "v.", label: "v. 动词 (通用)" },
@@ -1030,6 +1030,32 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 { val: "pl.", label: "pl. 复数" }
             ];
 
+            // 🔥 生成唯一的进度 Key (基于类型、分组ID、分批索引)
+            const getProgressKey = () => {
+                const base = `kaoyan_prog_${sessionConfig.type}`;
+                if (sessionConfig.type === 'group_study') {
+                    return `${base}_${sessionConfig.batchId}_${sessionConfig.batchIndex}`;
+                }
+                return `${base}_review`; // 复习模式虽然随机，但也做一个临时保存防止手滑退出
+            };
+
+            // 🔥 保存进度到本地
+            const saveProgress = (newQueue, newIdx) => {
+                const key = getProgressKey();
+                const data = {
+                    date: new Date().toDateString(), // 记录日期，用于判断“同一天”
+                    queue: newQueue,
+                    currentIdx: newIdx,
+                    timestamp: Date.now()
+                };
+                localStorage.setItem(key, JSON.stringify(data));
+            };
+
+            // 🔥 清除进度 (用于完成学习或手动重置)
+            const clearProgress = () => {
+                localStorage.removeItem(getProgressKey());
+            };
+
             // --- 撤回上一步 ---
             const handleUndo = (e) => {
                 if(e) e.stopPropagation();
@@ -1046,9 +1072,14 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 setIsFinished(false); 
                 setIsFlipped(true); 
 
+                let newQueue = [...queue];
                 if (lastAction.addedToQueue) {
-                    setQueue(prev => prev.slice(0, prev.length - 1));
+                    newQueue = newQueue.slice(0, newQueue.length - 1);
+                    setQueue(newQueue);
                 }
+                
+                // 撤回也要保存进度
+                saveProgress(newQueue, lastAction.idx);
                 setHistory(newHistory);
             };
 
@@ -1080,6 +1111,8 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     meanings: sortMeanings([...newQueue[currentIdx].meanings, newMeaningObj]) 
                 };
                 setQueue(newQueue);
+                // 释义改变不影响进度索引，但更新了队列内容，建议保存
+                saveProgress(newQueue, currentIdx);
 
                 setAddMeaningModal({ open: false, pos: 'n.', def: '' });
             };
@@ -1097,6 +1130,7 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 const newQueue = [...queue];
                 newQueue[currentIdx] = { ...newQueue[currentIdx], meanings: newMeanings };
                 setQueue(newQueue);
+                saveProgress(newQueue, currentIdx); // 保存
 
                 const newWords = words.map(w => {
                     if (w.id === currentCard.id) {
@@ -1108,26 +1142,59 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
             };
 
+            // 🔥 初始化逻辑：尝试读取存档
             useEffect(() => {
-                const now = Date.now();
-                let q = [];
-                const groupSize = config.groupSize || 208;
-                if (sessionConfig.type === 'review') {
-                    q = words.filter(w => w.stats && w.stats.nextReview <= now && w.stats.interval !== 0);
-                    if(q.length === 0) q = words.filter(w => w.stats && w.stats.interval < 1 && w.stats.interval !== 0);
-                    q = q.sort(() => Math.random() - 0.5).slice(0, 30);
-                } else if (sessionConfig.type === 'group_study') {
-                    const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
-                    const batchId = sessionConfig.batchId;
-                    const batchWords = catWords.filter(w => (w.importId || 'default') === batchId);
-                    const start = sessionConfig.batchIndex * groupSize;
-                    const end = start + groupSize;
-                    const targetGroup = batchWords.slice(start, end);
-                    const newWords = targetGroup.filter(w => !w.stats || w.stats.interval === 0);
-                    const reviewWords = targetGroup.filter(w => w.stats && w.stats.interval !== 0);
-                    q = [...newWords, ...reviewWords];
+                const key = getProgressKey();
+                const savedStr = localStorage.getItem(key);
+                let loaded = false;
+
+                if (savedStr) {
+                    try {
+                        const saved = JSON.parse(savedStr);
+                        // 判定是否是“同一天”
+                        if (saved.date === new Date().toDateString()) {
+                            // 校验数据有效性
+                            if (saved.queue && saved.queue.length > 0 && saved.currentIdx >= 0) {
+                                console.log("🔥 恢复上次进度:", saved.currentIdx, "/", saved.queue.length);
+                                setQueue(saved.queue);
+                                setCurrentIdx(saved.currentIdx);
+                                loaded = true;
+                                if (saved.currentIdx >= saved.queue.length) setIsFinished(true);
+                            }
+                        }
+                    } catch (e) {
+                        console.error("读取存档失败", e);
+                    }
                 }
-                setQueue(q);
+
+                // 如果没有存档，或者存档不是今天的，则重新生成
+                if (!loaded) {
+                    const now = Date.now();
+                    let q = [];
+                    const groupSize = config.groupSize || 208;
+                    if (sessionConfig.type === 'review') {
+                        q = words.filter(w => w.stats && w.stats.nextReview <= now && w.stats.interval !== 0);
+                        if(q.length === 0) q = words.filter(w => w.stats && w.stats.interval < 1 && w.stats.interval !== 0);
+                        q = q.sort(() => Math.random() - 0.5).slice(0, 30);
+                    } else if (sessionConfig.type === 'group_study') {
+                        const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
+                        const batchId = sessionConfig.batchId;
+                        const batchWords = catWords.filter(w => (w.importId || 'default') === batchId);
+                        const start = sessionConfig.batchIndex * groupSize;
+                        const end = start + groupSize;
+                        const targetGroup = batchWords.slice(start, end);
+                        const newWords = targetGroup.filter(w => !w.stats || w.stats.interval === 0);
+                        const reviewWords = targetGroup.filter(w => w.stats && w.stats.interval !== 0);
+                        q = [...newWords, ...reviewWords];
+                    }
+                    setQueue(q);
+                    setCurrentIdx(0);
+                    // 初始保存一下
+                    if(q.length > 0) {
+                        const initialData = { date: new Date().toDateString(), queue: q, currentIdx: 0, timestamp: Date.now() };
+                        localStorage.setItem(key, JSON.stringify(initialData));
+                    }
+                }
             }, [sessionConfig]);
 
             useEffect(() => { if (queue.length > 0 && !isFinished && !isFlipped) { const word = queue[currentIdx]?.word; if (word) { const timer = setTimeout(() => playAudio(word), 300); return () => clearTimeout(timer); } } }, [currentIdx, queue, isFinished]);
@@ -1161,10 +1228,15 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 const word = currentCard;
                 setHistory(prev => [...prev, { wordId: word.id, oldStats: word.stats, idx: currentIdx, addedToQueue: rating === 1 || rating === 2 }]);
 
+                // 处理重复卡片逻辑
                 if (word.isRepeat) {
                     if (rating === 3) { 
                         setIsFlipped(false); 
-                        setTimeout(() => currentIdx + 1 >= queue.length ? setIsFinished(true) : setCurrentIdx(prev => prev + 1), 200);
+                        const nextIdx = currentIdx + 1;
+                        if (nextIdx >= queue.length) setIsFinished(true);
+                        else setCurrentIdx(nextIdx);
+                        // 保存进度
+                        saveProgress(queue, nextIdx); 
                         return; 
                     }
                 }
@@ -1184,23 +1256,29 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 setWords(updatedWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(updatedWords));
                 
+                let nextQueue = [...queue];
                 if (result.isDueNow) {
-                    setQueue(prev => {
-                        const newQueue = [...prev];
-                        let insertOffset = 3 + Math.floor(Math.random() * 4); 
-                        let insertIndex = currentIdx + 1 + insertOffset;
-                        const repeatCard = { ...word, stats: newStats, isRepeat: true };
-                        if (insertIndex >= newQueue.length) { newQueue.push(repeatCard); } 
-                        else { newQueue.splice(insertIndex, 0, repeatCard); }
-                        return newQueue;
-                    });
+                    let insertOffset = 3 + Math.floor(Math.random() * 4); 
+                    let insertIndex = currentIdx + 1 + insertOffset;
+                    const repeatCard = { ...word, stats: newStats, isRepeat: true };
+                    if (insertIndex >= nextQueue.length) { nextQueue.push(repeatCard); } 
+                    else { nextQueue.splice(insertIndex, 0, repeatCard); }
+                    setQueue(nextQueue);
                 }
                 
-                setIsFlipped(false); 
-                setTimeout(() => currentIdx + 1 >= queue.length ? setIsFinished(true) : setCurrentIdx(prev => prev + 1), 200);
+                setIsFlipped(false);
+                
+                const nextIdx = currentIdx + 1;
+                // 🔥 关键点：保存最新队列和索引到本地
+                saveProgress(nextQueue, nextIdx);
+
+                setTimeout(() => {
+                    if (nextIdx >= nextQueue.length) setIsFinished(true);
+                    else setCurrentIdx(nextIdx);
+                }, 200);
             };
 
-            const toggleMeaningMastery = (e, mIdx) => { e.stopPropagation(); const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], isMastered:!meanings[mIdx].isMastered, _forceShow:false}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); const newWords=[...words]; const idx=newWords.findIndex(w=>w.id===currentCard.id); if(idx!==-1){ newWords[idx]={...newWords[idx], meanings:meanings}; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); } };
+            const toggleMeaningMastery = (e, mIdx) => { e.stopPropagation(); const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], isMastered:!meanings[mIdx].isMastered, _forceShow:false}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); const newWords=[...words]; const idx=newWords.findIndex(w=>w.id===currentCard.id); if(idx!==-1){ newWords[idx]={...newWords[idx], meanings:meanings}; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); } saveProgress(newQueue, currentIdx); };
             const toggleForceShow = (mIdx) => { const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], _forceShow:!meanings[mIdx]._forceShow}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); };
             
             const generateWordNote = async (e, forceRegenerate = false) => {
@@ -1220,6 +1298,7 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                         if(targetWord) targetWord.aiNote = s;
                         setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); 
                         const newQueue = [...queue]; newQueue[currentIdx].aiNote = s; setQueue(newQueue); 
+                        saveProgress(newQueue, currentIdx);
                     }
                 } catch(e){ alert("生成失败: " + e.message); } finally { setIsGeneratingNote(false); }
             };
@@ -1262,11 +1341,50 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     setWords(newWords);
                     localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
                     const newQueue = [...queue]; newQueue[currentIdx].aiSyntax = fullText; setQueue(newQueue);
+                    saveProgress(newQueue, currentIdx);
                 } catch (e) { setSyntaxModal(prev => ({ ...prev, content: "**分析失败**：" + e.message })); } finally { setSyntaxLoading(false); }
             };
 
+            // 🔥 重置/重新开始逻辑
+            const handleRestart = () => {
+                if(!confirm("确定要再刷一遍吗？这将重置当前进度。")) return;
+                clearProgress(); // 清除旧进度
+                // 重新触发 useEffect 初始化
+                const groupSize = config.groupSize || 208;
+                let q = [];
+                if (sessionConfig.type === 'group_study') {
+                    const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
+                    const batchId = sessionConfig.batchId;
+                    const batchWords = catWords.filter(w => (w.importId || 'default') === batchId);
+                    const start = sessionConfig.batchIndex * groupSize;
+                    const end = start + groupSize;
+                    q = batchWords.slice(start, end); // 重新加载原始组，不区分生熟，全部过一遍
+                }
+                setQueue(q);
+                setCurrentIdx(0);
+                setIsFinished(false);
+                setIsFlipped(false);
+                saveProgress(q, 0); // 存下新的开始
+            };
+
             if (queue.length === 0 && !isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full"><div className="bg-green-100 p-6 rounded-full mb-6 text-green-600"><Icon name="Check" size={48}/></div><h2 className="text-2xl font-bold text-gray-800 mb-2">当前任务完成</h2><p className="text-gray-500 mb-8">休息一下，稍后再来！</p><button onClick={onExit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95">返回首页</button></div></div>;
-            if (isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full"><div className="bg-indigo-100 p-6 rounded-full mb-6 text-indigo-600"><Icon name="Sparkles" size={48}/></div><h2 className="text-2xl font-bold text-gray-800 mb-4">本轮学习结束 🎉</h2><button onClick={onExit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95">返回</button></div></div>;
+            
+            // 🔥 升级后的完成页
+            if (isFinished) return (
+                <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50 animate-fade-in">
+                    <div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full">
+                        <div className="bg-indigo-100 p-6 rounded-full mb-6 text-indigo-600"><Icon name="Sparkles" size={48}/></div>
+                        <h2 className="text-2xl font-bold text-gray-800 mb-2">本轮学习结束 🎉</h2>
+                        <p className="text-gray-500 mb-8 text-sm">你可以选择返回列表，或者再刷一遍加深印象。</p>
+                        <div className="w-full space-y-3">
+                            {/* 返回按钮：不清除进度，保留完成状态 */}
+                            <button onClick={onExit} className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition transform active:scale-95">返回列表</button>
+                            {/* 再刷一遍：清除进度，从头开始 */}
+                            <button onClick={handleRestart} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95 flex items-center justify-center gap-2"><Icon name="RotateCcw" size={18}/> 再刷一遍巩固</button>
+                        </div>
+                    </div>
+                </div>
+            );
 
             return (
                 <div className="flex-1 flex flex-col relative bg-gray-100 overflow-hidden">
@@ -1296,11 +1414,9 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                                 </div>
                                 {/* 背面 */}
                                 <div className="card-face card-face-back p-0 bg-white">
-                                    {/* 🔥 修改：Header 区域增加“添加释义”按钮 */}
                                     <div className="flex-shrink-0 bg-white/95 backdrop-blur border-b border-gray-100 p-4 md:p-6 flex justify-between items-center z-10 shadow-sm">
                                         <h2 className="text-2xl md:text-4xl font-bold text-indigo-900 truncate pr-2">{currentCard.word}</h2>
                                         <div className="flex items-center gap-3">
-                                            {/* 新增：右上角添加释义按钮 */}
                                             <button onClick={(e) => { e.stopPropagation(); setAddMeaningModal({ open: true, pos: 'n.', def: '' }); }} className="p-3 bg-gray-50 rounded-full text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition border border-gray-100" title="添加新释义"><Icon name="PlusCircle" size={24}/></button>
                                             <button onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}} className="p-3 bg-indigo-50 rounded-full text-indigo-600 hover:bg-indigo-100 transition"><Icon name="Volume2" size={24}/></button>
                                         </div>
@@ -1331,13 +1447,10 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                                                             </div>
                                                         );
                                                     })}
-                                                    {/* 组内快捷添加 */}
                                                     <button onClick={(e) => { e.stopPropagation(); setAddMeaningModal({ open: true, pos: group.pos, def: '' }); }} className="w-full py-2 mt-1 mb-1 border-t border-dashed border-gray-50 text-gray-200 hover:text-indigo-400 hover:bg-indigo-50 transition flex items-center justify-center text-xs opacity-0 group-hover:opacity-100"><Icon name="PlusCircle" size={12}/></button>
                                                 </div>
                                             </div>
                                         ))}
-                                        
-                                        {/* 移除了底部的"补充新词性"大按钮，因为已经移到了右上角 */}
                                         
                                         <div className="mt-6 mb-2 grid grid-cols-2 gap-3">
                                             <button onClick={(e) => generateWordNote(e, false)} disabled={isGeneratingNote} className="py-4 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-2xl text-orange-600 font-bold flex flex-col items-center justify-center transition active:scale-95 group relative">
