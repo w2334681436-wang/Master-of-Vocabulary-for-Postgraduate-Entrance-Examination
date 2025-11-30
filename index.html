@@ -1224,23 +1224,32 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 return groups;
             }, [currentCard]);
 
+         // --- 评分逻辑 (修复：翻转动画闪烁 Bug) ---
             const handleRating = (rating) => {
                 const word = currentCard;
+                
+                // 1. 记录历史
                 setHistory(prev => [...prev, { wordId: word.id, oldStats: word.stats, idx: currentIdx, addedToQueue: rating === 1 || rating === 2 }]);
 
-                // 处理重复卡片逻辑
+                // 2. 严格模式：如果是重复卡片
                 if (word.isRepeat) {
                     if (rating === 3) { 
-                        setIsFlipped(false); 
+                        setIsFlipped(false); // 翻回正面
+                        
                         const nextIdx = currentIdx + 1;
-                        if (nextIdx >= queue.length) setIsFinished(true);
-                        else setCurrentIdx(nextIdx);
-                        // 保存进度
-                        saveProgress(queue, nextIdx); 
+                        // 🔥 修复点 1：将延迟从 200 改为 400
+                        // 确保背面完全转过去看不见了，再切换数据
+                        setTimeout(() => {
+                            if (nextIdx >= queue.length) setIsFinished(true);
+                            else setCurrentIdx(nextIdx);
+                            // 延迟保存，确保索引对应
+                            saveProgress(queue, nextIdx); 
+                        }, 400); 
                         return; 
                     }
                 }
 
+                // 3. 常规模式
                 const currentStats = word.stats || { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0, lastReviewTime: 0 };
                 const result = calculateNextReview(rating, currentStats.interval, currentStats.easeFactor, currentStats.reviewCount, currentStats.lastReviewTime);
                 
@@ -1252,10 +1261,12 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     lastReviewTime: Date.now()
                 };
                 
+                // 更新全局数据
                 const updatedWords = words.map(w => w.id === word.id ? { ...w, stats: newStats } : w);
                 setWords(updatedWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(updatedWords));
                 
+                // 更新队列
                 let nextQueue = [...queue];
                 if (result.isDueNow) {
                     let insertOffset = 3 + Math.floor(Math.random() * 4); 
@@ -1266,16 +1277,18 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     setQueue(nextQueue);
                 }
                 
+                // 4. 执行翻转动画
                 setIsFlipped(false);
                 
                 const nextIdx = currentIdx + 1;
-                // 🔥 关键点：保存最新队列和索引到本地
-                saveProgress(nextQueue, nextIdx);
-
+                
+                // 🔥 修复点 2：将延迟从 200 改为 400
                 setTimeout(() => {
                     if (nextIdx >= nextQueue.length) setIsFinished(true);
                     else setCurrentIdx(nextIdx);
-                }, 200);
+                    // 动画结束后再保存进度，体验更流畅
+                    saveProgress(nextQueue, nextIdx);
+                }, 400);
             };
 
             const toggleMeaningMastery = (e, mIdx) => { e.stopPropagation(); const newQueue=[...queue]; const card={...newQueue[currentIdx]}; const meanings=[...card.meanings]; meanings[mIdx]={...meanings[mIdx], isMastered:!meanings[mIdx].isMastered, _forceShow:false}; card.meanings=meanings; newQueue[currentIdx]=card; setQueue(newQueue); const newWords=[...words]; const idx=newWords.findIndex(w=>w.id===currentCard.id); if(idx!==-1){ newWords[idx]={...newWords[idx], meanings:meanings}; setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); } saveProgress(newQueue, currentIdx); };
