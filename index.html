@@ -1009,54 +1009,44 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
             // 历史记录栈
             const [history, setHistory] = useState([]);
 
-            // 🔥 预设词性列表
+            // 预设词性列表
             const POS_OPTIONS = [
-                { val: "n.", label: "n. 名词" },
-                { val: "v.", label: "v. 动词 (通用)" },
-                { val: "vt.", label: "vt. 及物动词" },
-                { val: "vi.", label: "vi. 不及物动词" },
-                { val: "adj.", label: "adj. 形容词" },
-                { val: "adv.", label: "adv. 副词" },
-                { val: "prep.", label: "prep. 介词" },
-                { val: "conj.", label: "conj. 连词" },
-                { val: "pron.", label: "pron. 代词" },
-                { val: "art.", label: "art. 冠词" },
-                { val: "num.", label: "num. 数词" },
-                { val: "int.", label: "int. 感叹词" },
-                { val: "abbr.", label: "abbr. 缩写" },
-                { val: "phrase", label: "phrase 短语/词组" },
-                { val: "aux.", label: "aux. 助动词" },
-                { val: "modal", label: "modal 情态动词" },
-                { val: "pl.", label: "pl. 复数" }
+                { val: "n.", label: "n. 名词" }, { val: "v.", label: "v. 动词" }, { val: "vt.", label: "vt. 及物" },
+                { val: "vi.", label: "vi. 不及物" }, { val: "adj.", label: "adj. 形容词" }, { val: "adv.", label: "adv. 副词" },
+                { val: "prep.", label: "prep. 介词" }, { val: "conj.", label: "conj. 连词" }, { val: "pron.", label: "pron. 代词" },
+                { val: "art.", label: "art. 冠词" }, { val: "num.", label: "num. 数词" }, { val: "int.", label: "int. 感叹词" },
+                { val: "abbr.", label: "abbr. 缩写" }, { val: "phrase", label: "phrase 短语" }, { val: "pl.", label: "pl. 复数" }
             ];
 
-            // 🔥 生成唯一的进度 Key (基于类型、分组ID、分批索引)
+            // 1. 生成唯一的进度 Key
             const getProgressKey = () => {
-                const base = `kaoyan_prog_${sessionConfig.type}`;
+                const dateStr = new Date().toDateString(); 
+                const base = `kaoyan_prog_${dateStr}_${sessionConfig.type}`;
                 if (sessionConfig.type === 'group_study') {
                     return `${base}_${sessionConfig.batchId}_${sessionConfig.batchIndex}`;
                 }
-                return `${base}_review`; // 复习模式虽然随机，但也做一个临时保存防止手滑退出
+                return `${base}_review`; 
             };
 
-            // 🔥 保存进度到本地
+            // 2. 保存进度
             const saveProgress = (newQueue, newIdx) => {
-                const key = getProgressKey();
-                const data = {
-                    date: new Date().toDateString(), // 记录日期，用于判断“同一天”
-                    queue: newQueue,
-                    currentIdx: newIdx,
-                    timestamp: Date.now()
-                };
-                localStorage.setItem(key, JSON.stringify(data));
+                try {
+                    const key = getProgressKey();
+                    const data = {
+                        queue: newQueue, 
+                        currentIdx: newIdx,
+                        timestamp: Date.now()
+                    };
+                    localStorage.setItem(key, JSON.stringify(data));
+                } catch (e) { console.error("Save failed", e); }
             };
 
-            // 🔥 清除进度 (用于完成学习或手动重置)
+            // 3. 清除进度
             const clearProgress = () => {
                 localStorage.removeItem(getProgressKey());
             };
 
-            // --- 撤回上一步 ---
+            // --- 撤回 ---
             const handleUndo = (e) => {
                 if(e) e.stopPropagation();
                 if (history.length === 0) return;
@@ -1078,7 +1068,6 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     setQueue(newQueue);
                 }
                 
-                // 撤回也要保存进度
                 saveProgress(newQueue, lastAction.idx);
                 setHistory(newHistory);
             };
@@ -1087,32 +1076,20 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
             const handleSaveNewMeaning = () => {
                 if (!addMeaningModal.pos || !addMeaningModal.def) return alert("请填写完整信息");
                 
-                const newMeaningObj = { 
-                    pos: addMeaningModal.pos.trim(), 
-                    def: addMeaningModal.def.trim(), 
-                    sentence: "", 
-                    isMastered: false 
-                };
-
+                const newMeaningObj = { pos: addMeaningModal.pos.trim(), def: addMeaningModal.def.trim(), sentence: "", isMastered: false };
                 const sortMeanings = (list) => [...list].sort((a, b) => a.pos.localeCompare(b.pos));
 
                 const newWords = words.map(w => {
-                    if (w.id === currentCard.id) {
-                        return { ...w, meanings: sortMeanings([...w.meanings, newMeaningObj]) };
-                    }
+                    if (w.id === currentCard.id) return { ...w, meanings: sortMeanings([...w.meanings, newMeaningObj]) };
                     return w;
                 });
                 setWords(newWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
 
                 const newQueue = [...queue];
-                newQueue[currentIdx] = { 
-                    ...newQueue[currentIdx], 
-                    meanings: sortMeanings([...newQueue[currentIdx].meanings, newMeaningObj]) 
-                };
+                newQueue[currentIdx] = { ...newQueue[currentIdx], meanings: sortMeanings([...newQueue[currentIdx].meanings, newMeaningObj]) };
                 setQueue(newQueue);
-                // 释义改变不影响进度索引，但更新了队列内容，建议保存
-                saveProgress(newQueue, currentIdx);
+                saveProgress(newQueue, currentIdx); 
 
                 setAddMeaningModal({ open: false, pos: 'n.', def: '' });
             };
@@ -1121,28 +1098,21 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
             const handleDeleteMeaning = (e, originalIdx) => {
                 e.stopPropagation();
                 if (!confirm("确定要删除这条释义吗？")) return;
-
                 const currentMeanings = queue[currentIdx].meanings;
                 if (currentMeanings.length <= 1) return alert("至少保留一个释义，无法删除。");
-
                 const newMeanings = currentMeanings.filter((_, i) => i !== originalIdx);
 
                 const newQueue = [...queue];
                 newQueue[currentIdx] = { ...newQueue[currentIdx], meanings: newMeanings };
                 setQueue(newQueue);
-                saveProgress(newQueue, currentIdx); // 保存
+                saveProgress(newQueue, currentIdx); 
 
-                const newWords = words.map(w => {
-                    if (w.id === currentCard.id) {
-                        return { ...w, meanings: newMeanings };
-                    }
-                    return w;
-                });
+                const newWords = words.map(w => { if (w.id === currentCard.id) return { ...w, meanings: newMeanings }; return w; });
                 setWords(newWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords));
             };
 
-            // 🔥 初始化逻辑：尝试读取存档
+            // 初始化
             useEffect(() => {
                 const key = getProgressKey();
                 const savedStr = localStorage.getItem(key);
@@ -1151,31 +1121,26 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 if (savedStr) {
                     try {
                         const saved = JSON.parse(savedStr);
-                        // 判定是否是“同一天”
-                        if (saved.date === new Date().toDateString()) {
-                            // 校验数据有效性
-                            if (saved.queue && saved.queue.length > 0 && saved.currentIdx >= 0) {
-                                console.log("🔥 恢复上次进度:", saved.currentIdx, "/", saved.queue.length);
-                                setQueue(saved.queue);
-                                setCurrentIdx(saved.currentIdx);
-                                loaded = true;
-                                if (saved.currentIdx >= saved.queue.length) setIsFinished(true);
-                            }
+                        if (saved.queue && saved.queue.length > 0) {
+                            console.log("🔥 恢复进度:", saved.currentIdx, "/", saved.queue.length);
+                            setQueue(saved.queue);
+                            setCurrentIdx(saved.currentIdx);
+                            loaded = true;
+                            if (saved.currentIdx >= saved.queue.length) setIsFinished(true);
                         }
-                    } catch (e) {
-                        console.error("读取存档失败", e);
-                    }
+                    } catch (e) { console.error("Load failed", e); }
                 }
 
-                // 如果没有存档，或者存档不是今天的，则重新生成
                 if (!loaded) {
                     const now = Date.now();
                     let q = [];
                     const groupSize = config.groupSize || 208;
+                    
                     if (sessionConfig.type === 'review') {
+                        // 智能复习：全量加载
                         q = words.filter(w => w.stats && w.stats.nextReview <= now && w.stats.interval !== 0);
                         if(q.length === 0) q = words.filter(w => w.stats && w.stats.interval < 1 && w.stats.interval !== 0);
-                        q = q.sort(() => Math.random() - 0.5).slice(0, 30);
+                        q = q.sort(() => Math.random() - 0.5); 
                     } else if (sessionConfig.type === 'group_study') {
                         const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
                         const batchId = sessionConfig.batchId;
@@ -1187,15 +1152,15 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                         const reviewWords = targetGroup.filter(w => w.stats && w.stats.interval !== 0);
                         q = [...newWords, ...reviewWords];
                     }
+                    
                     setQueue(q);
                     setCurrentIdx(0);
-                    // 初始保存一下
                     if(q.length > 0) {
-                        const initialData = { date: new Date().toDateString(), queue: q, currentIdx: 0, timestamp: Date.now() };
+                        const initialData = { queue: q, currentIdx: 0, timestamp: Date.now() };
                         localStorage.setItem(key, JSON.stringify(initialData));
                     }
                 }
-            }, [sessionConfig]);
+            }, [sessionConfig]); 
 
             useEffect(() => { if (queue.length > 0 && !isFinished && !isFlipped) { const word = queue[currentIdx]?.word; if (word) { const timer = setTimeout(() => playAudio(word), 300); return () => clearTimeout(timer); } } }, [currentIdx, queue, isFinished]);
 
@@ -1224,30 +1189,29 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 return groups;
             }, [currentCard]);
 
-// --- 评分逻辑 (视觉微调：250ms 黄金切换点) ---
+            // 🔥 核心评分逻辑 (严格遵循“最低熟练度”原则)
             const handleRating = (rating) => {
                 const word = currentCard;
-                
-                // 1. 记录历史
                 setHistory(prev => [...prev, { wordId: word.id, oldStats: word.stats, idx: currentIdx, addedToQueue: rating === 1 || rating === 2 }]);
 
-                // 2. 严格模式：重复卡片点认识 -> 仅过场，不存数据
+                // 🔥 严格模式逻辑：这是同一天内因为“不熟”而插入队列的回头客
                 if (word.isRepeat) {
-                    if (rating === 3) { 
-                        setIsFlipped(false); // 翻回正面
-                        
+                    // 如果这次点的不是“不会”(1)，不管是“熟练”(3)还是“不熟”(2)
+                    // 都视为“本次巩固完成”，直接跳过，保留第一次评分时的“惨状”。
+                    if (rating !== 1) { 
+                        setIsFlipped(false); 
                         const nextIdx = currentIdx + 1;
-                        // 🔥 调整：250ms (既不闪烁，也不卡顿)
                         setTimeout(() => {
                             if (nextIdx >= queue.length) setIsFinished(true);
                             else setCurrentIdx(nextIdx);
                             saveProgress(queue, nextIdx); 
                         }, 250); 
-                        return; 
+                        return; // 结束函数，不执行 updateWords
                     }
+                    // 如果点了“不会”(1)，则代码继续向下执行，触发降级逻辑。
                 }
 
-                // 3. 常规模式：计算算法
+                // --- 常规逻辑 (新词，或第一次不熟，或重复时依然不会) ---
                 const currentStats = word.stats || { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0, lastReviewTime: 0 };
                 const result = calculateNextReview(rating, currentStats.interval, currentStats.easeFactor, currentStats.reviewCount, currentStats.lastReviewTime);
                 
@@ -1259,30 +1223,25 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     lastReviewTime: Date.now()
                 };
                 
-                // 更新数据
                 const updatedWords = words.map(w => w.id === word.id ? { ...w, stats: newStats } : w);
                 setWords(updatedWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(updatedWords));
                 
-                // 插入队列逻辑
                 let nextQueue = [...queue];
+                // 如果需要死磕，插入队列
                 if (result.isDueNow) {
                     let insertOffset = 3 + Math.floor(Math.random() * 4); 
                     let insertIndex = currentIdx + 1 + insertOffset;
+                    // 标记 isRepeat，下次遇到它进入严格模式
                     const repeatCard = { ...word, stats: newStats, isRepeat: true };
                     if (insertIndex >= nextQueue.length) { nextQueue.push(repeatCard); } 
                     else { nextQueue.splice(insertIndex, 0, repeatCard); }
                     setQueue(nextQueue);
                 }
                 
-                // 4. 执行动画
-                setIsFlipped(false); // 开始翻转 (耗时 600ms)
-                
+                setIsFlipped(false);
                 const nextIdx = currentIdx + 1;
                 
-                // 🔥 核心优化：在 250ms 时切换数据
-                // 此时卡片刚好旋转到 90度（侧面对着屏幕，不可见）
-                // 此时切换数据，用户完全感觉不到变化，体验最丝滑
                 setTimeout(() => {
                     if (nextIdx >= nextQueue.length) setIsFinished(true);
                     else setCurrentIdx(nextIdx);
@@ -1357,11 +1316,11 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 } catch (e) { setSyntaxModal(prev => ({ ...prev, content: "**分析失败**：" + e.message })); } finally { setSyntaxLoading(false); }
             };
 
-            // 🔥 重置/重新开始逻辑
+            // 重置逻辑 (仅分组模式)
             const handleRestart = () => {
-                if(!confirm("确定要再刷一遍吗？这将重置当前进度。")) return;
-                clearProgress(); // 清除旧进度
-                // 重新触发 useEffect 初始化
+                if(!confirm("确定要再刷一遍吗？\n\n注意：如果这一遍您选择了'不会'，该单词的熟练度将会下降！")) return;
+                clearProgress(); 
+                
                 const groupSize = config.groupSize || 208;
                 let q = [];
                 if (sessionConfig.type === 'group_study') {
@@ -1370,30 +1329,46 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     const batchWords = catWords.filter(w => (w.importId || 'default') === batchId);
                     const start = sessionConfig.batchIndex * groupSize;
                     const end = start + groupSize;
-                    q = batchWords.slice(start, end); // 重新加载原始组，不区分生熟，全部过一遍
+                    q = batchWords.slice(start, end); 
                 }
+                
                 setQueue(q);
                 setCurrentIdx(0);
                 setIsFinished(false);
                 setIsFlipped(false);
-                saveProgress(q, 0); // 存下新的开始
+                
+                if (q.length > 0) {
+                    const key = getProgressKey();
+                    const initialData = { queue: q, currentIdx: 0, timestamp: Date.now() };
+                    localStorage.setItem(key, JSON.stringify(initialData));
+                }
             };
 
             if (queue.length === 0 && !isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full"><div className="bg-green-100 p-6 rounded-full mb-6 text-green-600"><Icon name="Check" size={48}/></div><h2 className="text-2xl font-bold text-gray-800 mb-2">当前任务完成</h2><p className="text-gray-500 mb-8">休息一下，稍后再来！</p><button onClick={onExit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95">返回首页</button></div></div>;
             
-            // 🔥 升级后的完成页
+            // 🔥 完成页
             if (isFinished) return (
                 <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50 animate-fade-in">
                     <div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full">
                         <div className="bg-indigo-100 p-6 rounded-full mb-6 text-indigo-600"><Icon name="Sparkles" size={48}/></div>
                         <h2 className="text-2xl font-bold text-gray-800 mb-2">本轮学习结束 🎉</h2>
-                        <p className="text-gray-500 mb-8 text-sm">你可以选择返回列表，或者再刷一遍加深印象。</p>
-                        <div className="w-full space-y-3">
-                            {/* 返回按钮：不清除进度，保留完成状态 */}
-                            <button onClick={onExit} className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition transform active:scale-95">返回列表</button>
-                            {/* 再刷一遍：清除进度，从头开始 */}
-                            <button onClick={handleRestart} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95 flex items-center justify-center gap-2"><Icon name="RotateCcw" size={18}/> 再刷一遍巩固</button>
-                        </div>
+                        
+                        {sessionConfig.type === 'group_study' ? (
+                            <>
+                                <p className="text-gray-500 mb-8 text-sm">你可以选择返回列表，或者再刷一遍进行巩固。</p>
+                                <div className="w-full space-y-3">
+                                    <button onClick={onExit} className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition transform active:scale-95">返回列表</button>
+                                    <button onClick={handleRestart} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95 flex items-center justify-center gap-2"><Icon name="RotateCcw" size={18}/> 再刷一遍巩固</button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <p className="text-gray-500 mb-8 text-sm">今日智能复习任务已全部完成！</p>
+                                <div className="w-full">
+                                    <button onClick={onExit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition transform active:scale-95">返回首页</button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             );
