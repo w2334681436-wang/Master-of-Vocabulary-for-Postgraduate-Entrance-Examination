@@ -1069,7 +1069,7 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
             );
         };
 
- const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
+const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatSession }) => {
             const [queue, setQueue] = useState([]);
             const [currentIdx, setCurrentIdx] = useState(0);
             const [isFlipped, setIsFlipped] = useState(false);
@@ -1081,10 +1081,31 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
             
             // 模态框状态
             const [syntaxModal, setSyntaxModal] = useState({ open: false, content: '' });
-            const [addMeaningModal, setAddMeaningModal] = useState({ open: false, pos: '', def: '' }); 
+            const [addMeaningModal, setAddMeaningModal] = useState({ open: false, pos: 'n.', def: '' }); 
 
-            // 历史记录栈 (用于撤回)
+            // 历史记录栈
             const [history, setHistory] = useState([]);
+
+            // 🔥 预设词性列表 (显示中文，存入缩写)
+            const POS_OPTIONS = [
+                { val: "n.", label: "n. 名词" },
+                { val: "v.", label: "v. 动词 (通用)" },
+                { val: "vt.", label: "vt. 及物动词" },
+                { val: "vi.", label: "vi. 不及物动词" },
+                { val: "adj.", label: "adj. 形容词" },
+                { val: "adv.", label: "adv. 副词" },
+                { val: "prep.", label: "prep. 介词" },
+                { val: "conj.", label: "conj. 连词" },
+                { val: "pron.", label: "pron. 代词" },
+                { val: "art.", label: "art. 冠词" },
+                { val: "num.", label: "num. 数词" },
+                { val: "int.", label: "int. 感叹词" },
+                { val: "abbr.", label: "abbr. 缩写" },
+                { val: "phrase", label: "phrase 短语/词组" },
+                { val: "aux.", label: "aux. 助动词" },
+                { val: "modal", label: "modal 情态动词" },
+                { val: "pl.", label: "pl. 复数" }
+            ];
 
             // --- 撤回上一步 ---
             const handleUndo = (e) => {
@@ -1094,27 +1115,23 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                 const lastAction = history[history.length - 1];
                 const newHistory = history.slice(0, -1);
 
-                // 1. 恢复全局单词数据的旧状态
                 const restoredWords = words.map(w => w.id === lastAction.wordId ? { ...w, stats: lastAction.oldStats } : w);
                 setWords(restoredWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(restoredWords));
 
-                // 2. 恢复队列位置
                 setCurrentIdx(lastAction.idx);
                 setIsFinished(false); 
-                setIsFlipped(true); // 撤回后通常回到背面
+                setIsFlipped(true); 
 
-                // 3. 如果上次操作导致了追加复习，从队列末尾移除
                 if (lastAction.addedToQueue) {
                     setQueue(prev => prev.slice(0, prev.length - 1));
                 }
-
                 setHistory(newHistory);
             };
 
-            // --- 保存新释义 (自动排序以合并同词性) ---
+            // --- 保存新释义 ---
             const handleSaveNewMeaning = () => {
-                if (!addMeaningModal.pos || !addMeaningModal.def) return alert("请填写词性和释义");
+                if (!addMeaningModal.pos || !addMeaningModal.def) return alert("请填写完整信息");
                 
                 const newMeaningObj = { 
                     pos: addMeaningModal.pos.trim(), 
@@ -1141,10 +1158,10 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                 };
                 setQueue(newQueue);
 
-                setAddMeaningModal({ open: false, pos: '', def: '' });
+                setAddMeaningModal({ open: false, pos: 'n.', def: '' });
             };
 
-            // --- 删除指定释义 ---
+            // --- 删除释义 ---
             const handleDeleteMeaning = (e, originalIdx) => {
                 e.stopPropagation();
                 if (!confirm("确定要删除这条释义吗？")) return;
@@ -1217,20 +1234,12 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                 return groups;
             }, [currentCard]);
 
-            // --- 评分逻辑 (含防刷 & 死磕模式) ---
             const handleRating = (rating) => {
                 const word = currentCard;
-                
-                setHistory(prev => [...prev, {
-                    wordId: word.id,
-                    oldStats: word.stats,
-                    idx: currentIdx,
-                    addedToQueue: rating === 1 || rating === 2
-                }]);
+                setHistory(prev => [...prev, { wordId: word.id, oldStats: word.stats, idx: currentIdx, addedToQueue: rating === 1 || rating === 2 }]);
 
                 if (word.isRepeat) {
                     if (rating === 3) { 
-                        // 重复卡片点认识 -> 仅今日通过，不改数据
                         setIsFlipped(false); 
                         setTimeout(() => currentIdx + 1 >= queue.length ? setIsFinished(true) : setCurrentIdx(prev => prev + 1), 200);
                         return; 
@@ -1258,11 +1267,8 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                         let insertOffset = 3 + Math.floor(Math.random() * 4); 
                         let insertIndex = currentIdx + 1 + insertOffset;
                         const repeatCard = { ...word, stats: newStats, isRepeat: true };
-                        if (insertIndex >= newQueue.length) {
-                            newQueue.push(repeatCard);
-                        } else {
-                            newQueue.splice(insertIndex, 0, repeatCard);
-                        }
+                        if (insertIndex >= newQueue.length) { newQueue.push(repeatCard); } 
+                        else { newQueue.splice(insertIndex, 0, repeatCard); }
                         return newQueue;
                     });
                 }
@@ -1347,7 +1353,6 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                     
                     <button onClick={onExit} className="absolute top-4 left-4 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title="退出"><Icon name="ArrowLeft" size={24}/></button>
                     
-                    {/* 撤回按钮 */}
                     <button onClick={(e) => {e.stopPropagation(); handleUndo(e);}} disabled={history.length === 0} className={`absolute top-4 left-16 z-20 p-2.5 backdrop-blur rounded-full shadow-md transition ${history.length === 0 ? 'bg-gray-200/50 text-gray-400 cursor-not-allowed' : 'bg-white/80 text-gray-600 hover:text-indigo-600 hover:bg-white'}`} title="撤回上一步"><Icon name="RotateCcw" size={24}/></button>
                     
                     <button onClick={toggleFullscreen} className="absolute top-4 right-16 z-20 p-2.5 bg-white/80 backdrop-blur rounded-full shadow-md text-gray-600 hover:text-indigo-600 transition hover:bg-white" title={isFullscreen ? "退出全屏" : "全屏模式"}><Icon name={isFullscreen ? "Minimize" : "Maximize"} size={24}/></button>
@@ -1368,9 +1373,14 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                                 </div>
                                 {/* 背面 */}
                                 <div className="card-face card-face-back p-0 bg-white">
+                                    {/* 🔥 修改：Header 区域增加“添加释义”按钮 */}
                                     <div className="flex-shrink-0 bg-white/95 backdrop-blur border-b border-gray-100 p-4 md:p-6 flex justify-between items-center z-10 shadow-sm">
-                                        <h2 className="text-2xl md:text-4xl font-bold text-indigo-900">{currentCard.word}</h2>
-                                        <button onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}} className="p-3 bg-indigo-50 rounded-full text-indigo-600 hover:bg-indigo-100 transition"><Icon name="Volume2" size={24}/></button>
+                                        <h2 className="text-2xl md:text-4xl font-bold text-indigo-900 truncate pr-2">{currentCard.word}</h2>
+                                        <div className="flex items-center gap-3">
+                                            {/* 新增：右上角添加释义按钮 */}
+                                            <button onClick={(e) => { e.stopPropagation(); setAddMeaningModal({ open: true, pos: 'n.', def: '' }); }} className="p-3 bg-gray-50 rounded-full text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 transition border border-gray-100" title="添加新释义"><Icon name="PlusCircle" size={24}/></button>
+                                            <button onClick={(e)=>{e.stopPropagation();playAudio(currentCard.word);}} className="p-3 bg-indigo-50 rounded-full text-indigo-600 hover:bg-indigo-100 transition"><Icon name="Volume2" size={24}/></button>
+                                        </div>
                                     </div>
                                     
                                     <div className="flex-1 overflow-y-auto custom-scroll p-4 md:p-8 space-y-4 md:space-y-6">
@@ -1398,11 +1408,13 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                                                             </div>
                                                         );
                                                     })}
+                                                    {/* 组内快捷添加 */}
                                                     <button onClick={(e) => { e.stopPropagation(); setAddMeaningModal({ open: true, pos: group.pos, def: '' }); }} className="w-full py-2 mt-1 mb-1 border-t border-dashed border-gray-50 text-gray-200 hover:text-indigo-400 hover:bg-indigo-50 transition flex items-center justify-center text-xs opacity-0 group-hover:opacity-100"><Icon name="PlusCircle" size={12}/></button>
                                                 </div>
                                             </div>
                                         ))}
-                                        <button onClick={(e) => { e.stopPropagation(); setAddMeaningModal({ open: true, pos: 'adj.', def: '' }); }} className="w-full py-3 mt-4 mb-2 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 hover:text-indigo-500 hover:border-indigo-300 hover:bg-indigo-50 transition flex items-center justify-center font-bold text-sm"><span className="mr-2"><Icon name="PlusCircle" size={18}/></span> 补充新词性/释义</button>
+                                        
+                                        {/* 移除了底部的"补充新词性"大按钮，因为已经移到了右上角 */}
                                         
                                         <div className="mt-6 mb-2 grid grid-cols-2 gap-3">
                                             <button onClick={(e) => generateWordNote(e, false)} disabled={isGeneratingNote} className="py-4 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-2xl text-orange-600 font-bold flex flex-col items-center justify-center transition active:scale-95 group relative">
@@ -1431,7 +1443,7 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                         </div>
                     </div>
 
-                    {/* 🔥 长难句分析模态框 */}
+                    {/* 长难句分析模态框 (保持不变) */}
                     {syntaxModal.open && (
                         <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4 animate-fade-in" onClick={() => setSyntaxModal({ ...syntaxModal, open: false })}>
                             <div className="bg-white w-full md:max-w-2xl h-[85vh] md:h-[80vh] rounded-t-2xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -1449,14 +1461,40 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                         </div>
                     )}
 
-                    {/* 快捷添加释义弹窗 */}
+                    {/* 🔥 升级版：快捷添加释义弹窗 (含词性下拉选择) */}
                     {addMeaningModal.open && (
                         <div className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setAddMeaningModal({ ...addMeaningModal, open: false })}>
                             <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
                                 <h3 className="text-lg font-bold text-gray-800 mb-4">补充新释义</h3>
                                 <div className="space-y-4">
-                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">词性</label><input type="text" value={addMeaningModal.pos} onChange={e => setAddMeaningModal({ ...addMeaningModal, pos: e.target.value })} placeholder="例如: n. / vt." className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"/></div>
-                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">意思</label><input type="text" value={addMeaningModal.def} onChange={e => setAddMeaningModal({ ...addMeaningModal, def: e.target.value })} placeholder="输入中文释义..." className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" onKeyDown={e => {if(e.key === 'Enter') handleSaveNewMeaning();}} autoFocus /></div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">词性</label>
+                                        {/* 下拉选择框 */}
+                                        <div className="relative">
+                                            <select 
+                                                value={addMeaningModal.pos} 
+                                                onChange={e => setAddMeaningModal({ ...addMeaningModal, pos: e.target.value })} 
+                                                className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 appearance-none bg-white font-mono"
+                                            >
+                                                {POS_OPTIONS.map((opt) => (
+                                                    <option key={opt.val} value={opt.val}>{opt.label}</option>
+                                                ))}
+                                            </select>
+                                            <div className="absolute right-3 top-3.5 text-gray-400 pointer-events-none">▼</div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">意思</label>
+                                        <input 
+                                            type="text" 
+                                            value={addMeaningModal.def} 
+                                            onChange={e => setAddMeaningModal({ ...addMeaningModal, def: e.target.value })} 
+                                            placeholder="输入中文释义..." 
+                                            className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" 
+                                            onKeyDown={e => {if(e.key === 'Enter') handleSaveNewMeaning();}} 
+                                            autoFocus 
+                                        />
+                                    </div>
                                 </div>
                                 <div className="flex gap-3 mt-6">
                                     <button onClick={() => setAddMeaningModal({ ...addMeaningModal, open: false })} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">取消</button>
