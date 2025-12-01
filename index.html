@@ -79,110 +79,37 @@
         <style>@keyframes spin { 0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);} }</style>
     </div>
 
-  <script>
+<script>
         // 1. 全局错误捕捉
         window.onerror = function(msg, url, line, col, error) {
             var root = document.getElementById('root');
             if(root) root.innerHTML = '<div style="padding:20px;text-align:center;color:red;"><h3>发生错误</h3><p>'+msg+'</p><p>Line: '+line+'</p></div>';
         };
 
-        // 2. 🔥 PWA 核心：离线缓存 (已修复 CDN 跨域缓存问题)
+        // 2. 注册独立的 sw.js 文件
         if ('serviceWorker' in navigator) {
-            // ⭐ 版本号升级到 v4，确保浏览器强制更新旧缓存
-            const CACHE_NAME = 'kaoyan-offline-v4'; 
-            
-            // 必须与 head 中引用的资源链接完全一致
-            const URLS_TO_CACHE = [
-                './', 
-                'https://cdn.tailwindcss.com',
-                'https://cdn.staticfile.net/react/18.2.0/umd/react.production.min.js',
-                'https://cdn.staticfile.net/react-dom/18.2.0/umd/react-dom.production.min.js',
-                'https://cdn.staticfile.net/babel-standalone/7.23.5/babel.min.js',
-                'https://cdn.jsdelivr.net/npm/marked/marked.min.js',
-                'https://cdn.staticfile.net/lz-string/1.4.4/lz-string.min.js',
-                'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f4da.png'
-            ];
-
-            const swScript = `
-                const CACHE_NAME = '${CACHE_NAME}';
-                const URLS = ${JSON.stringify(URLS_TO_CACHE)};
-
-                // 1. 安装：强力预缓存
-                self.addEventListener('install', e => {
-                    self.skipWaiting(); // 强制跳过等待
-                    e.waitUntil(
-                        caches.open(CACHE_NAME).then(async cache => {
-                            console.log('🔥 SW: 开始全量下载离线资源...');
-                            // 这里使用 Promise.allSettled 类似逻辑，确保即使个别失败也不中断流程
-                            // 但为了保证能用，尽量请求所有核心库
-                            await Promise.all(URLS.map(url => {
-                                // mode: 'cors' 确保跨域 CDN 也能正确请求
-                                const request = new Request(url, { mode: 'cors' });
-                                return fetch(request).then(response => {
-                                    if (response.ok) return cache.put(request, response);
-                                    console.warn('资源下载失败:', url);
-                                }).catch(err => console.warn('请求错误:', url, err));
-                            }));
-                        })
-                    );
-                });
-
-                // 2. 激活：清理旧版本
-                self.addEventListener('activate', e => {
-                    e.waitUntil(
-                        caches.keys().then(keys => Promise.all(
-                            keys.map(key => {
-                                if (key !== CACHE_NAME) {
-                                    console.log('♻️ SW: 清理旧版本', key);
-                                    return caches.delete(key);
-                                }
-                            })
-                        )).then(() => self.clients.claim())
-                    );
-                });
-
-                // 3. 拦截：网络策略 (Cache First - 缓存优先)
-                self.addEventListener('fetch', e => {
-                    // API 和 非GET 请求不缓存
-                    if (e.request.url.includes('/chat/completions') || e.request.method !== 'GET') return;
-
-                    e.respondWith(
-                        caches.match(e.request).then(cached => {
-                            // A. 命中缓存 -> 直接返回 (秒开，无需网络)
-                            if (cached) return cached;
-
-                            // B. 未命中 -> 走网络 -> 并存入缓存 (下次就有了)
-                            return fetch(e.request).then(res => {
-                                // 关键修复：不再检查 type === 'basic'，允许 'cors' (CDN资源)
-                                if (res && res.status === 200) {
-                                    const clone = res.clone();
-                                    caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
-                                }
-                                return res;
-                            });
-                        })
-                    );
-                });
-            `;
-
-            const blob = new Blob([swScript], { type: 'application/javascript' });
-            const swUrl = URL.createObjectURL(blob);
-
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register(swUrl)
+                // 指定 scope 为 ./ 确保能控制同级目录下的所有文件
+                navigator.serviceWorker.register('./sw.js', { scope: './' })
                     .then(reg => {
-                        console.log('✅ 离线助手 v4 已激活');
+                        console.log('✅ ServiceWorker 注册成功:', reg.scope);
                         
-                        // 监听状态变化，提示用户
-                        if(reg.installing) {
-                            reg.installing.onstatechange = function() {
-                                if(this.state === 'installed' && !navigator.serviceWorker.controller) {
-                                    console.log('🎉 离线资源下载完毕！');
+                        // 监听更新
+                        reg.onupdatefound = () => {
+                            const installingWorker = reg.installing;
+                            installingWorker.onstatechange = () => {
+                                if (installingWorker.state === 'installed') {
+                                    if (navigator.serviceWorker.controller) {
+                                        console.log('检测到新版本，请刷新页面');
+                                        // 可选：弹窗提示用户刷新
+                                    } else {
+                                        console.log('离线资源已就绪！');
+                                    }
                                 }
-                            }
-                        }
+                            };
+                        };
                     })
-                    .catch(err => console.error('❌ 注册失败:', err));
+                    .catch(err => console.error('❌ ServiceWorker 注册失败:', err));
             });
         }
     </script>
