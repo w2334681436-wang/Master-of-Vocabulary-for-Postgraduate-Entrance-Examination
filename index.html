@@ -1634,7 +1634,7 @@ if (!isNewBatch && existingIdx !== -1) {
                     let hasSplit = false;
                     let newMeanings = [];
                     w.meanings.forEach(m => {
-                        const separators = /[;；，]|\s\d+\.\s/; 
+                        const separators = /[;；，,]|\s\d+\.\s/; 
                         if (m.def.match(separators)) {
                             hasSplit = true;
                             // 拆分
