@@ -188,38 +188,83 @@
             }
         };
 
-// 🔥 核心修复：优化算法，防止一天内重复刷导致间隔暴涨，并优化“不熟”单词的重现频率
-        const calculateNextReview = (rating, currentInterval, easeFactor, currentReviewCount, lastReviewTime) => {
-            const now = Date.now();
-            // 判定是否为“同一天内的短期重复” (例如：距离上次复习小于 16 小时)
-            const isSameDayRepeat = lastReviewTime && (now - lastReviewTime < 16 * 60 * 60 * 1000);
+// 🔥 核心修复：优化算法，引入“日历日”对齐和“早鸟机制”
+const calculateNextReview = (rating, currentInterval, easeFactor, currentReviewCount, lastReviewTime) => {
+    const now = Date.now();
+    // 判定是否为“同一天内的短期重复” (例如：距离上次复习小于 16 小时)
+    const isSameDayRepeat = lastReviewTime && (now - lastReviewTime < 16 * 60 * 60 * 1000);
 
-            let nextInterval, nextEaseFactor = easeFactor;
-            const newReviewCount = (currentReviewCount || 0) + 1;
+    let nextInterval, nextEaseFactor = easeFactor;
+    const newReviewCount = (currentReviewCount || 0) + 1;
+    let nextReviewTime = 0; // 存储计算出的下次复习时间戳
 
-            if (rating === 1) { // 不认识
-                // 无论何时，不认识直接重置
-                return { interval: 0, easeFactor: Math.max(1.3, easeFactor - 0.2), isDueNow: true, reviewCount: newReviewCount };
-            } else if (rating === 2) { // 不熟
-                // 变成 0.5 (约12小时后)，进入短期高频复习流
-                return { interval: 0.5, easeFactor: Math.max(1.3, easeFactor - 0.15), isDueNow: true, reviewCount: newReviewCount }; 
-            } else { // 认识 (Rating 3)
-                if (isSameDayRepeat && currentInterval > 0) {
-                    // 🔥 重点逻辑：如果是同一天内重复复习已掌握的词，只作为巩固
-                    // 保持原间隔不变，不增加 EaseFactor，防止“刷绿”过快
-                    nextInterval = currentInterval;
-                } else {
-                    // 正常的跨天复习逻辑
-                    if (currentInterval === 0) nextInterval = 1;
-                    else if (currentInterval <= 0.5) nextInterval = 1; // 修正小数间隔
-                    else if (currentInterval === 1) nextInterval = 3;
-                    else nextInterval = Math.round(currentInterval * easeFactor);
-                    
-                    nextEaseFactor = easeFactor + 0.1;
-                }
-                return { interval: nextInterval, easeFactor: nextEaseFactor, isDueNow: false, reviewCount: newReviewCount };
-            }
+    if (rating === 1) { // 不认识
+        // 无论何时，不认识直接重置
+        return { 
+            interval: 0, 
+            easeFactor: Math.max(1.3, easeFactor - 0.2), 
+            isDueNow: true, 
+            reviewCount: newReviewCount,
+            nextReview: now // 立即过期
         };
+    } else if (rating === 2) { // 不熟
+        // 变成 0.5 (约12小时后)，进入短期高频复习流
+        return { 
+            interval: 0.5, 
+            easeFactor: Math.max(1.3, easeFactor - 0.15), 
+            isDueNow: true, 
+            reviewCount: newReviewCount,
+            nextReview: now + (0.5 * 24 * 60 * 60 * 1000) // 暂按时间推算
+        }; 
+    } else { // 认识 (Rating 3)
+        if (isSameDayRepeat && currentInterval > 0) {
+            // 🔥 重点逻辑：如果是同一天内重复复习已掌握的词，只作为巩固
+            // 保持原间隔不变，不增加 EaseFactor，防止“刷绿”过快
+            nextInterval = currentInterval;
+            
+            // 这种情况下，保持原有的复习日期不变（或者简单顺延）
+            // 这里我们选择简单顺延当前间隔
+            nextReviewTime = now + (nextInterval * 24 * 60 * 60 * 1000);
+        } else {
+            // 正常的跨天复习逻辑
+            if (currentInterval === 0) {
+                // ✨ 修复：第一次复习设为 0.8 天，配合下方的日历对齐逻辑，
+                // 确保不管几点背的，只要到了明天就能刷
+                nextInterval = 0.8; 
+            }
+            else if (currentInterval <= 0.8) nextInterval = 1; // 修正小数间隔
+            else if (currentInterval === 1) nextInterval = 3;
+            else nextInterval = Math.round(currentInterval * easeFactor);
+            
+            nextEaseFactor = easeFactor + 0.1;
+
+            // 🛠️ 大师级优化：将 nextReview 对齐到“目标日期的凌晨 4 点”
+            const nowDate = new Date(now);
+            // 计算需要增加的天数（向上取整，0.8 也会变成 1 天，保证是“明天”）
+            const daysToAdd = Math.ceil(nextInterval); 
+            
+            const targetDate = new Date(nowDate);
+            targetDate.setDate(nowDate.getDate() + daysToAdd); // 日期往后推
+            targetDate.setHours(4, 0, 0, 0); // ⏰ 强制设为凌晨 4:00:00
+            
+            // 如果计算出的时间比现在还早（极端情况），防御性加一天
+            if (targetDate.getTime() <= now) {
+                 targetDate.setDate(targetDate.getDate() + 1);
+            }
+            
+            nextReviewTime = targetDate.getTime();
+        }
+        
+        return { 
+            interval: nextInterval, 
+            easeFactor: nextEaseFactor, 
+            isDueNow: false, 
+            reviewCount: newReviewCount,
+            nextReview: nextReviewTime, // ✨ 返回计算好的精准时间
+            lastReviewTime: now
+        };
+    }
+};
 
 const WordChat = ({ word, words, setWords, onClose, config }) => {
             // --- 1. 状态管理 ---
@@ -1156,9 +1201,26 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     
                     if (sessionConfig.type === 'review') {
                         // 智能复习：全量加载
-                        q = words.filter(w => w.stats && w.stats.nextReview <= now && w.stats.interval !== 0);
-                        if(q.length === 0) q = words.filter(w => w.stats && w.stats.interval < 1 && w.stats.interval !== 0);
-                        q = q.sort(() => Math.random() - 0.5); 
+                     if (sessionConfig.type === 'review') {
+    // 1. 找出到了时间的词 (nextReview <= now) 且 (间隔不为0 OR 是曾经学过的回炉词)
+    q = words.filter(w => {
+        if (!w.stats) return false;
+        const isDue = w.stats.nextReview <= Date.now();
+        // 关键修复：如果 interval 是 0，但 reviewCount > 0，说明是忘掉的旧词，必须复习！
+        const isRelearning = w.stats.interval === 0 && w.stats.reviewCount > 0;
+        const isNormalReview = w.stats.interval > 0;
+        
+        return isDue && (isNormalReview || isRelearning);
+    });
+
+    // 2. 兜底逻辑：如果真没到日期的词，也别让用户闲着，抓几个“不熟”的（interval 小于 1 的）来巩固
+    if (q.length === 0) {
+        q = words.filter(w => w.stats && w.stats.reviewCount > 0 && w.stats.interval <= 1);
+    }
+    
+    // 按优先级排序：先复习 interval 越小的（越难的），再随机
+    q = q.sort((a, b) => (a.stats.interval - b.stats.interval) || (Math.random() - 0.5));
+}
                     } else if (sessionConfig.type === 'group_study') {
                         const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
                         const batchId = sessionConfig.batchId;
@@ -1231,15 +1293,18 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
 
                 // --- 常规逻辑 (新词，或第一次不熟，或重复时依然不会) ---
                 const currentStats = word.stats || { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0, lastReviewTime: 0 };
+               // 在 handleRating 函数内：
+
                 const result = calculateNextReview(rating, currentStats.interval, currentStats.easeFactor, currentStats.reviewCount, currentStats.lastReviewTime);
-                
+
                 const newStats = { 
-                    interval: result.interval, 
-                    easeFactor: result.easeFactor, 
-                    nextReview: Date.now() + (result.interval * 24 * 60 * 60 * 1000), 
-                    reviewCount: result.reviewCount,
-                    lastReviewTime: Date.now()
-                };
+                interval: result.interval, 
+                easeFactor: result.easeFactor, 
+                // 🔥 修改这里：优先使用 calculateNextReview 返回的对齐时间
+                       nextReview: result.nextReview || (Date.now() + (result.interval * 24 * 60 * 60 * 1000)), 
+                       reviewCount: result.reviewCount,
+                       lastReviewTime: Date.now()
+               };
                 
                 const updatedWords = words.map(w => w.id === word.id ? { ...w, stats: newStats } : w);
                 setWords(updatedWords);
