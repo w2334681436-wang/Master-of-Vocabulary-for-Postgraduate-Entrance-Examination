@@ -1731,20 +1731,82 @@ if (!isNewBatch && existingIdx !== -1) {
                 }
             };
 
-            const fetchWordsFromAI = async () => {
-                if (!config.apiKey) { alert("请配置 Key"); return; } if (!aiInput.trim()) return; const wordList = aiInput.split(/[\s,\n]+/).filter(w => w.trim().match(/^[a-zA-Z\-]+$/)); if(wordList.length===0) return;
-                setIsFetching(true); setFetchProgress({ current: 0, total: wordList.length, success: 0, fail: 0 }); const targetCat = getTargetCategory(); 
-                const batchId = isNewBatch ? `batch-${Date.now()}` : 'default'; saveBatchMeta(batchId);
-                const BATCH_SIZE = 5; let currentWords = JSON.parse(JSON.stringify(words)); let successCount = 0; let failCount = 0;
+           const fetchWordsFromAI = async () => {
+                if (!config.apiKey) { alert("请配置 Key"); return; } 
+                if (!aiInput.trim()) return; 
+                
+                const wordList = aiInput.split(/[\s,\n]+/).filter(w => w.trim().match(/^[a-zA-Z\-]+$/)); 
+                if(wordList.length===0) return;
+                
+                setIsFetching(true); 
+                setFetchProgress({ current: 0, total: wordList.length, success: 0, fail: 0 }); 
+                
+                const targetCat = getTargetCategory(); 
+                const batchId = isNewBatch ? `batch-${Date.now()}` : 'default'; 
+                saveBatchMeta(batchId);
+                
+                const BATCH_SIZE = 5; 
+                let currentWords = JSON.parse(JSON.stringify(words)); 
+                let successCount = 0; 
+                let failCount = 0;
+                
                 for (let i = 0; i < wordList.length; i += BATCH_SIZE) {
-                    const batch = wordList.slice(i, i + BATCH_SIZE); const batchStr = batch.join(", "); const prompt = `考研单词查询JSON:[${batchStr}]`;
+                    const batch = wordList.slice(i, i + BATCH_SIZE); 
+                    const batchStr = batch.join(", "); 
+                    const prompt = `考研单词查询JSON:[${batchStr}]`;
+                    
                     try {
-                        let jsonStr=""; if(config.type==='google'){ const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey.trim()}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})}); const data=await res.json(); jsonStr=data.candidates?.[0]?.content?.parts?.[0]?.text; } else { let baseUrl=config.baseUrl.replace(/\/$/,""); if(!baseUrl.includes("/v1")&&!baseUrl.includes("aliyuncs")&&!baseUrl.includes("bigmodel")&&!baseUrl.includes("lingyiwanwu")&&!baseUrl.includes("siliconflow"))baseUrl+="/v1"; const res=await fetch(`${baseUrl}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${config.apiKey.trim()}`},body:JSON.stringify({model:config.model,messages:[{role:"user",content:prompt}]})}); const data=await res.json(); jsonStr=data.choices?.[0]?.message?.content; }
-                        if(!jsonStr) throw new Error("Empty"); jsonStr=jsonStr.replace(/```json/g,'').replace(/```/g,'').trim(); const parsedBatch=JSON.parse(jsonStr);
-                        if(Array.isArray(parsedBatch)){ parsedBatch.forEach(item=>{ const existIdx=currentWords.findIndex(w=>w.word.toLowerCase()===item.word.toLowerCase()); const meanings=item.meanings.map(m=>({...m,sentence:"",isMastered:false})); if(!isNewBatch && existIdx!==-1){ item.meanings.forEach(nm=>{ if(!currentWords[existIdx].meanings.some(om=>om.pos===nm.pos && om.def===nm.def)) currentWords[existIdx].meanings.push({...nm,sentence:"",isMastered:false}); }); }else{ currentWords.push({id:`ai-${Date.now()}-${Math.random()}`,word:item.word,phonetic:item.phonetic||"",category:targetCat,importId:batchId,meanings,stats:{interval:0,easeFactor:2.5,nextReview:0,reviewCount:0}}); } }); successCount+=batch.length; }
-                    } catch(err){ failCount+=batch.length; }
-                    setFetchProgress({ current: Math.min(i+BATCH_SIZE, wordList.length), total: wordList.length, success: successCount, fail: failCount }); setWords([...currentWords]); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords));
-                } setIsFetching(false); alert("完成"); setImportBatchName('');
+                        let jsonStr=""; 
+                        if(config.type==='google'){ 
+                            const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey.trim()}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})}); 
+                            const data=await res.json(); 
+                            jsonStr=data.candidates?.[0]?.content?.parts?.[0]?.text; 
+                        } else { 
+                            let baseUrl=config.baseUrl.replace(/\/$/,""); 
+                            if(!baseUrl.includes("/v1")&&!baseUrl.includes("aliyuncs")&&!baseUrl.includes("bigmodel")&&!baseUrl.includes("lingyiwanwu")&&!baseUrl.includes("siliconflow"))baseUrl+="/v1"; 
+                            const res=await fetch(`${baseUrl}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${config.apiKey.trim()}`},body:JSON.stringify({model:config.model,messages:[{role:"user",content:prompt}]})}); 
+                            const data=await res.json(); 
+                            jsonStr=data.choices?.[0]?.message?.content; 
+                        }
+                        
+                        if(!jsonStr) throw new Error("Empty"); 
+                        jsonStr=jsonStr.replace(/```json/g,'').replace(/```/g,'').trim(); 
+                        const parsedBatch=JSON.parse(jsonStr);
+                        
+                        if(Array.isArray(parsedBatch)){ 
+                            parsedBatch.forEach(item=>{ 
+                                const existIdx=currentWords.findIndex(w=>w.word.toLowerCase()===item.word.toLowerCase()); 
+                                const meanings=item.meanings.map(m=>({...m,sentence:"",isMastered:false})); 
+                                
+                                if(!isNewBatch && existIdx!==-1){ 
+                                    // 🔥 核心修复：检测是否有新释义加入
+                                    let hasNew = false;
+                                    item.meanings.forEach(nm=>{ 
+                                        if(!currentWords[existIdx].meanings.some(om=>om.pos===nm.pos && om.def===nm.def)) {
+                                            currentWords[existIdx].meanings.push({...nm,sentence:"",isMastered:false}); 
+                                            hasNew = true;
+                                        }
+                                    }); 
+                                    // 🔥 如果有新释义，强制重置复习进度，确保该词会再次出现在复习中
+                                    if (hasNew) {
+                                        currentWords[existIdx].stats = { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 };
+                                    }
+                                } else { 
+                                    currentWords.push({id:`ai-${Date.now()}-${Math.random()}`,word:item.word,phonetic:item.phonetic||"",category:targetCat,importId:batchId,meanings,stats:{interval:0,easeFactor:2.5,nextReview:0,reviewCount:0}}); 
+                                } 
+                            }); 
+                            successCount+=batch.length; 
+                        }
+                    } catch(err){ 
+                        failCount+=batch.length; 
+                    }
+                    setFetchProgress({ current: Math.min(i+BATCH_SIZE, wordList.length), total: wordList.length, success: successCount, fail: failCount }); 
+                    setWords([...currentWords]); 
+                    localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords));
+                } 
+                setIsFetching(false); 
+                alert("完成"); 
+                setImportBatchName('');
             };
 
             const handleFile = (e) => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (ev) => { try { const content = JSON.parse(ev.target.result); if (content.type === 'KAOYAN_FULL_BACKUP' && content.storage) { if(confirm(`恢复备份将覆盖当前数据，确定吗？`)) { Object.keys(content.storage).forEach(key => { if(key.startsWith('kaoyan_')) localStorage.setItem(key, content.storage[key]); }); window.location.reload(); } return; } if (Array.isArray(content)) { if(confirm(`导入旧版单词表?`)) { setWords(content); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(content)); alert("完成"); } return; } } catch(err) { alert("错误"); } }; reader.readAsText(file); };
