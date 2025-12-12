@@ -1678,32 +1678,35 @@ if (!isNewBatch && existingIdx !== -1) {
                 if (addedCount > 0 || mergedCount > 0) { setWords(currentWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords)); alert(`导入成功！新增: ${addedCount}, 合并: ${mergedCount}`); setTextInput(''); setImportBatchName(''); } else alert("格式错误");
             };
 
-                       const repairData = () => {
+                              const repairData = () => {
                 let fixedCount = 0;
                 const newWords = words.map(w => {
                     let needsFix = false;
                     let newMeanings = [];
                     
                     w.meanings.forEach(m => {
-                        const parts = m.def.split(/(\s+[a-z]{1,5}\.\s*)/);
+                        // 🔥 核心修复：
+                        // 原来的正则要求前面必须有空格 (\s+)，所以 "干v." 无法识别。
+                        // 新正则 /([a-z]{1,5}\.\s+)/ 去掉了前面的空格限制，只要遇到 "词性.+空格" 就拆分。
+                        const parts = m.def.split(/([a-z]{1,5}\.\s+)/);
 
                         if (parts.length > 2) { 
                             needsFix = true;
-                            // 1. 处理第一部分（原词性下的第一段释义）
+                            
+                            // 1. 处理被切分出的第一部分 (例如 "干")
+                            // 这部分保留原来的词性
                             if (parts[0] && parts[0].trim()) {
                                 newMeanings.push({ ...m, def: parts[0].trim() });
                             }
 
-                            // 2. 循环处理后面被切出来的部分
+                            // 2. 循环处理后面识别出的新词性 (例如 "v." 和 "起源于")
                             for (let i = 1; i < parts.length; i += 2) {
-                                const posTagRaw = parts[i];       // 例如 " v. "
+                                const posTagRaw = parts[i];       // 例如 "v. "
                                 const defContent = parts[i + 1];  // 例如 "起源于"
 
                                 if (posTagRaw && defContent && defContent.trim()) {
-                                    // 清洗词性（去掉前后的空格）
-                                    const cleanPos = posTagRaw.trim(); 
                                     newMeanings.push({ 
-                                        pos: cleanPos, 
+                                        pos: posTagRaw.trim(), 
                                         def: defContent.trim(), 
                                         sentence: "", 
                                         isMastered: false 
@@ -1711,7 +1714,7 @@ if (!isNewBatch && existingIdx !== -1) {
                                 }
                             }
                         } else {
-                            // 没发现问题，保持原样
+                            // 如果没切开，保持原样
                             newMeanings.push(m);
                         }
                     });
@@ -1726,11 +1729,12 @@ if (!isNewBatch && existingIdx !== -1) {
                 if (fixedCount > 0) { 
                     setWords(newWords); 
                     localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); 
-                    alert(`🎉 强力修复成功！\n\n共拆分并整理了 ${fixedCount} 个单词。\n现在 "干 v. 起源于" 应该已经被拆成两行了。`); 
+                    alert(`🎉 强力修复成功！\n\n已成功拆分 ${fixedCount} 个单词。\n解决了像 "干v." 这样中间没有空格的问题。`); 
                 } else { 
-                    alert("当前数据看起来很健康，未发现混杂的词性标签。"); 
+                    alert("未发现需要修复的单词。\n(请确认你的单词释义中确实包含 'v. ' 这种带点的形式)"); 
                 }
             };
+
 
 
             // 🔥 强力拆分，包含逗号！
