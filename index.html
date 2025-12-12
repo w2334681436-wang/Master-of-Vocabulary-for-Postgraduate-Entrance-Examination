@@ -1678,18 +1678,60 @@ if (!isNewBatch && existingIdx !== -1) {
                 if (addedCount > 0 || mergedCount > 0) { setWords(currentWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords)); alert(`导入成功！新增: ${addedCount}, 合并: ${mergedCount}`); setTextInput(''); setImportBatchName(''); } else alert("格式错误");
             };
 
-            const repairData = () => {
+                       const repairData = () => {
                 let fixedCount = 0;
                 const newWords = words.map(w => {
-                    let needsFix = false; let newMeanings = [];
+                    let needsFix = false;
+                    let newMeanings = [];
+                    
                     w.meanings.forEach(m => {
-                        const parts = m.def.split(/\s+([a-z]{1,4}\.)\s+/);
-                        if (parts.length > 1) { needsFix = true; newMeanings.push({ ...m, def: parts[0].trim() }); for (let i = 1; i < parts.length; i += 2) if (parts[i+1]) newMeanings.push({ pos: parts[i], def: parts[i+1].trim(), sentence: "", isMastered: false }); } else newMeanings.push(m);
+                        const parts = m.def.split(/(\s+[a-z]{1,5}\.\s*)/);
+
+                        if (parts.length > 2) { 
+                            needsFix = true;
+                            // 1. 处理第一部分（原词性下的第一段释义）
+                            if (parts[0] && parts[0].trim()) {
+                                newMeanings.push({ ...m, def: parts[0].trim() });
+                            }
+
+                            // 2. 循环处理后面被切出来的部分
+                            for (let i = 1; i < parts.length; i += 2) {
+                                const posTagRaw = parts[i];       // 例如 " v. "
+                                const defContent = parts[i + 1];  // 例如 "起源于"
+
+                                if (posTagRaw && defContent && defContent.trim()) {
+                                    // 清洗词性（去掉前后的空格）
+                                    const cleanPos = posTagRaw.trim(); 
+                                    newMeanings.push({ 
+                                        pos: cleanPos, 
+                                        def: defContent.trim(), 
+                                        sentence: "", 
+                                        isMastered: false 
+                                    });
+                                }
+                            }
+                        } else {
+                            // 没发现问题，保持原样
+                            newMeanings.push(m);
+                        }
                     });
-                    if (needsFix) { fixedCount++; return { ...w, meanings: newMeanings }; } return w;
+
+                    if (needsFix) { 
+                        fixedCount++; 
+                        return { ...w, meanings: newMeanings }; 
+                    } 
+                    return w;
                 });
-                if (fixedCount > 0) { setWords(newWords); localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); alert(`🎉 修复成功！整理了 ${fixedCount} 个单词。`); } else alert("暂未发现格式错乱的单词。");
+
+                if (fixedCount > 0) { 
+                    setWords(newWords); 
+                    localStorage.setItem('kaoyan_vocab_list', JSON.stringify(newWords)); 
+                    alert(`🎉 强力修复成功！\n\n共拆分并整理了 ${fixedCount} 个单词。\n现在 "干 v. 起源于" 应该已经被拆成两行了。`); 
+                } else { 
+                    alert("当前数据看起来很健康，未发现混杂的词性标签。"); 
+                }
             };
+
 
             // 🔥 强力拆分，包含逗号！
             const deepSplitMeanings = () => {
