@@ -610,15 +610,24 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                                 <span className="tracking-wide hidden sm:inline">考研词汇大师</span>
                             </div>
                         </div>
-                        <div className="flex space-x-1 items-center">
-                            <button onClick={toggleFullscreen} className="p-2 rounded-lg hover:bg-indigo-500 transition" title="全屏/退出">
-                                <Icon name="Maximize" />
-                            </button>
-                            <button onClick={() => setView('home')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'home' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Brain" /></button>
-                            <button onClick={() => setView('list')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'list' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="List" /></button>
-                            <button onClick={() => setView('import')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'import' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Upload" /></button>
-                            <button onClick={() => setView('settings')} className={`p-2 rounded-lg hover:bg-indigo-500 transition ${view === 'settings' ? 'bg-indigo-800 shadow-inner' : ''}`}><Icon name="Settings" /></button>
-                        </div>
+                                    <div className="flex flex-col items-end gap-2">
+                                        {/* 第一排：管理类按键 (生成故事、编辑、转移、删除) */}
+                                        <div className="flex space-x-1">
+                                            <button onClick={(e) => { e.stopPropagation(); generateStory(g.words, g.batchName); }} className={`p-1.5 rounded transition ${g.green === g.total ? 'bg-gray-100 text-gray-400' : 'bg-amber-50 text-amber-600 hover:bg-amber-100 animate-pulse'}`} title={g.green === g.total ? "已全部掌握" : "攻克生词"}><Icon name="Sparkles" size={16}/></button>
+                                            <button onClick={(e) => openEditModal(e, g.batchId, g.batchName, g.desc)} className="p-1.5 bg-gray-50 text-gray-600 rounded hover:bg-indigo-50 hover:text-indigo-600 transition" title="编辑"><Icon name="Edit" size={16}/></button>
+                                            <button onClick={(e) => openMoveModal(e, g.words)} className="p-1.5 bg-blue-50 text-blue-500 rounded hover:bg-blue-100 transition" title="转移"><Icon name="Move" size={16}/></button>
+                                            <button onClick={(e) => handleDeleteGroup(e, g.words)} className="p-1.5 bg-red-50 text-red-500 rounded hover:bg-red-100 transition" title="删除"><Icon name="Trash2" size={16}/></button>
+                                        </div>
+
+                                        {/* 第二排：学习类按键 (拼写全、背生词、拼生词) - 靠右对齐 */}
+                                        <div className="flex space-x-1">
+                                            <button onClick={(e) => { e.stopPropagation(); setSessionConfig({ type: 'group_spelling', category, batchId: g.batchId, batchIndex: g.batchIndex }); setView('spelling'); }} className="p-1.5 bg-cyan-50 text-cyan-600 rounded hover:bg-cyan-100 transition" title="拼写模式(全)"><Icon name="Keyboard" size={16}/></button>
+                                            <button onClick={(e) => { e.stopPropagation(); setSessionConfig({ type: 'group_study', filter: 'hard', category, batchId: g.batchId, batchIndex: g.batchIndex }); setView('study'); }} className="p-1.5 bg-orange-50 text-orange-600 rounded hover:bg-orange-100 transition" title="只背生词"><Icon name="Book" size={16}/></button>
+                                            
+                                            {/* 🔥 图标已修改为 Keyboard */}
+                                            <button onClick={(e) => { e.stopPropagation(); setSessionConfig({ type: 'group_spelling', filter: 'hard', category, batchId: g.batchId, batchIndex: g.batchIndex }); setView('spelling'); }} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition" title="只拼生词"><Icon name="Keyboard" size={16}/></button>
+                                        </div>
+                                    </div>
                     </div>
                 </nav>
             );
