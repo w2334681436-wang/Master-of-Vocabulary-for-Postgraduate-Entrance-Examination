@@ -932,6 +932,22 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                 return result;
             }, [words, category, config.groupSize, groupMeta]);
 
+            const getSpellingProgress = (batchId, batchIndex) => {
+                try {
+                    const dateStr = new Date().toDateString();
+                    // 对应 SpellingSession 里的 Key 生成规则
+                    const key = `kaoyan_prog_${dateStr}_group_spelling_${batchId}_${batchIndex}`;
+                    const savedStr = localStorage.getItem(key);
+                    if (savedStr) {
+                        const data = JSON.parse(savedStr);
+                        if (data.queue && data.queue.length > 0) {
+                            return Math.round((data.currentIdx / data.queue.length) * 100);
+                        }
+                    }
+                } catch (e) {}
+                return 0;
+            };
+
             const displayTitle = ({ high: "高频词", medium: "中频词", low: "低频词", zero: "零频词", uncategorized: "未分类" })[category] || category;
             const startGroup = (batchId, batchIndex) => { setSessionConfig({ type: 'group_study', category, batchId, batchIndex }); setView('study'); };
             
@@ -1007,6 +1023,20 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                                             <div className="h-full bg-amber-400 transition-all duration-500" style={{width: `${(g.yellow/g.total)*100}%`}}></div>
                                             <div className="h-full bg-red-100" style={{width: `${(g.red/g.total)*100}%`}}></div>
                                         </div>
+                                        {(() => {
+                                            const sp = getSpellingProgress(g.batchId, g.batchIndex);
+                                            return sp > 0 ? (
+                                                <div className="mt-2">
+                                                    <div className="flex justify-between text-[10px] text-gray-400 mb-0.5">
+                                                        <span>拼写进度</span>
+                                                        <span>{sp}%</span>
+                                                    </div>
+                                                    <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-cyan-400 transition-all duration-500" style={{width: `${sp}%`}}></div>
+                                                    </div>
+                                                </div>
+                                            ) : null;
+                                        })()}
                                         <div className="flex justify-between mt-2 text-[10px] text-gray-400 font-mono">
                                             <span className="flex items-center"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1"></div>{g.green}</span>
                                             <span className="flex items-center"><div className="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1"></div>{g.yellow}</span>
@@ -1624,41 +1654,82 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
             );
         };
 
-        // --- 🔥 新增：拼写模式核心组件 ---
+      // --- 🔥 新增：拼写模式核心组件 (升级版：含存档、防遮挡、重置) ---
         const SpellingSession = ({ words, setWords, sessionConfig, onExit, config }) => {
             const [queue, setQueue] = useState([]);
             const [currentIdx, setCurrentIdx] = useState(0);
             const [input, setInput] = useState("");
             const [status, setStatus] = useState("idle"); // idle, success, error, revealed
             const [isFinished, setIsFinished] = useState(false);
-            const [shake, setShake] = useState(false); // 错误时的抖动动画
+            const [shake, setShake] = useState(false);
             const inputRef = useRef(null);
 
-            // 1. 初始化队列 (复用 StudySession 的逻辑)
-            useEffect(() => {
-                let q = [];
-                const groupSize = config.groupSize || 208;
-                
-                if (sessionConfig.type === 'review' || sessionConfig.type === 'spelling_review') {
-                     // 复习模式：选取到期单词
-                     q = words.filter(w => w.stats && (w.stats.nextReview <= Date.now() || (w.stats.interval === 0 && w.stats.reviewCount > 0)));
-                     if (q.length === 0) q = words.filter(w => w.stats && w.stats.reviewCount > 0 && w.stats.interval <= 1).slice(0, 20); // 兜底
-                     // 随机打乱
-                     q = q.sort(() => Math.random() - 0.5);
-                } else if (sessionConfig.type === 'group_study' || sessionConfig.type === 'group_spelling') {
-                    // 分组模式
-                    const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
-                    const batchWords = catWords.filter(w => (w.importId || 'default') === sessionConfig.batchId);
-                    const start = sessionConfig.batchIndex * groupSize;
-                    q = batchWords.slice(start, start + groupSize);
+            // 1. 进度 Key 生成器 (与背单词模式保持一致，按天存档)
+            const getProgressKey = () => {
+                const dateStr = new Date().toDateString();
+                const base = `kaoyan_prog_${dateStr}_${sessionConfig.type}`;
+                if (sessionConfig.type.includes('group')) {
+                    return `${base}_${sessionConfig.batchId}_${sessionConfig.batchIndex}`;
                 }
-                setQueue(q);
-                setCurrentIdx(0);
-                // 聚焦输入框
-                setTimeout(() => inputRef.current?.focus(), 500);
+                return `${base}_review`;
+            };
+
+            // 2. 保存进度
+            const saveProgress = (newQueue, newIdx) => {
+                try {
+                    const key = getProgressKey();
+                    const data = { queue: newQueue, currentIdx: newIdx, timestamp: Date.now() };
+                    localStorage.setItem(key, JSON.stringify(data));
+                } catch (e) {}
+            };
+
+            // 3. 清除进度
+            const clearProgress = () => {
+                localStorage.removeItem(getProgressKey());
+            };
+
+            // 4. 初始化 (优先读取存档)
+            useEffect(() => {
+                const key = getProgressKey();
+                const savedStr = localStorage.getItem(key);
+                let loaded = false;
+
+                if (savedStr) {
+                    try {
+                        const saved = JSON.parse(savedStr);
+                        if (saved.queue && saved.queue.length > 0) {
+                            setQueue(saved.queue);
+                            setCurrentIdx(saved.currentIdx);
+                            loaded = true;
+                            if (saved.currentIdx >= saved.queue.length) setIsFinished(true);
+                            // 恢复焦点
+                            setTimeout(() => inputRef.current?.focus(), 500);
+                        }
+                    } catch (e) {}
+                }
+
+                if (!loaded) {
+                    let q = [];
+                    const groupSize = config.groupSize || 208;
+                    
+                    if (sessionConfig.type === 'review' || sessionConfig.type === 'spelling_review') {
+                         q = words.filter(w => w.stats && (w.stats.nextReview <= Date.now() || (w.stats.interval === 0 && w.stats.reviewCount > 0)));
+                         if (q.length === 0) q = words.filter(w => w.stats && w.stats.reviewCount > 0 && w.stats.interval <= 1).slice(0, 20);
+                         q = q.sort(() => Math.random() - 0.5);
+                    } else if (sessionConfig.type.includes('group')) {
+                        const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
+                        const batchWords = catWords.filter(w => (w.importId || 'default') === sessionConfig.batchId);
+                        const start = sessionConfig.batchIndex * groupSize;
+                        q = batchWords.slice(start, start + groupSize);
+                    }
+                    setQueue(q);
+                    setCurrentIdx(0);
+                    if(q.length > 0) saveProgress(q, 0); // 初始存档
+                    setTimeout(() => inputRef.current?.focus(), 500);
+                }
             }, [sessionConfig]);
 
-            // 2. 提交检查逻辑
+            // 5. 提交逻辑
             const handleSubmit = () => {
                 if (!input.trim()) return;
                 const currentCard = queue[currentIdx];
@@ -1667,7 +1738,7 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 if (isCorrect) {
                     setStatus("success");
                     playAudio(currentCard.word);
-                    handleRating(3); // 拼对 = 认识
+                    handleRating(3); 
                 } else {
                     setStatus("error");
                     setShake(true);
@@ -1675,18 +1746,19 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 }
             };
 
-            // 3. 放弃/看答案逻辑
             const handleGiveUp = () => {
                 setStatus("revealed");
                 playAudio(queue[currentIdx].word);
-                handleRating(1); // 放弃 = 不认识
+                handleRating(1); 
             };
 
-            // 4. 下一个
             const handleNext = () => {
                 setInput("");
                 setStatus("idle");
                 const nextIdx = currentIdx + 1;
+                // 保存进度
+                saveProgress(queue, nextIdx);
+
                 if (nextIdx >= queue.length) {
                     setIsFinished(true);
                 } else {
@@ -1695,7 +1767,6 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 }
             };
 
-            // 5. 评分并保存 (复用核心算法)
             const handleRating = (rating) => {
                 const word = queue[currentIdx];
                 const currentStats = word.stats || { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0, lastReviewTime: 0 };
@@ -1713,10 +1784,33 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 setWords(updatedWords);
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(updatedWords));
 
-                // 如果是成功的，延迟自动下一题；如果是失败/放弃，需要手动点下一步
                 if (rating === 3) {
-                    setTimeout(handleNext, 1000);
+                    setTimeout(handleNext, 800); // 答对自动下一题
                 }
+            };
+
+            // 再学一遍逻辑
+            const handleRestart = () => {
+                if(!confirm("确定要重新开始吗？进度将被重置。")) return;
+                clearProgress();
+                // 强制刷新当前会话
+                const groupSize = config.groupSize || 208;
+                let q = [];
+                if (sessionConfig.type.includes('group')) {
+                    const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
+                    const batchWords = catWords.filter(w => (w.importId || 'default') === sessionConfig.batchId);
+                    const start = sessionConfig.batchIndex * groupSize;
+                    q = batchWords.slice(start, start + groupSize);
+                } else {
+                    q = words.filter(w => w.stats && (w.stats.nextReview <= Date.now())).slice(0, 20); // 简单复位
+                }
+                setQueue(q);
+                setCurrentIdx(0);
+                setIsFinished(false);
+                setStatus('idle');
+                setInput("");
+                saveProgress(q, 0);
+                setTimeout(() => inputRef.current?.focus(), 500);
             };
 
             if (queue.length === 0 && !isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="text-gray-400 mb-4"><Icon name="Check" size={48}/></div><p>没有需要拼写的单词！</p><button onClick={onExit} className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg">返回</button></div>;
@@ -1726,7 +1820,10 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     <div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full">
                         <div className="bg-indigo-100 p-6 rounded-full mb-6 text-indigo-600"><Icon name="Keyboard" size={48}/></div>
                         <h2 className="text-2xl font-bold text-gray-800 mb-2">拼写练习完成 🎉</h2>
-                        <button onClick={onExit} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition mt-6">返回</button>
+                        <div className="w-full space-y-3 mt-6">
+                            <button onClick={onExit} className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition">返回列表</button>
+                            <button onClick={handleRestart} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition flex items-center justify-center gap-2"><Icon name="RotateCcw" size={18}/> 再拼一遍</button>
+                        </div>
                     </div>
                 </div>
             );
@@ -1735,90 +1832,47 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
 
             return (
                 <div className="flex-1 flex flex-col bg-gray-50 relative h-full overflow-hidden">
-                    {/* 顶部导航 */}
                     <div className="bg-white p-4 shadow-sm flex items-center justify-between safe-top z-10">
                         <button onClick={onExit} className="p-2 text-gray-500 hover:bg-gray-100 rounded-full"><Icon name="ArrowLeft" size={24}/></button>
                         <div className="font-bold text-gray-700">拼写模式 ({currentIdx + 1}/{queue.length})</div>
                         <div className="w-8"></div>
                     </div>
                     
-                    {/* 进度条 */}
                     <div className="w-full h-1.5 bg-gray-200">
-                        <div className="h-full bg-indigo-600 transition-all duration-300" style={{width: `${(currentIdx / queue.length) * 100}%`}}></div>
+                        <div className="h-full bg-cyan-500 transition-all duration-300" style={{width: `${(currentIdx / queue.length) * 100}%`}}></div>
                     </div>
 
-                    {/* 主体区域 */}
-                    <div className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-lg mx-auto overflow-y-auto custom-scroll">
-                        
-                        {/* 释义卡片 */}
+                    <div className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-lg mx-auto overflow-y-auto custom-scroll pb-32"> {/* 🔥 pb-32 增加内容区底部留白 */}
                         <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8 text-center min-h-[160px] flex flex-col justify-center items-center relative">
-                            {/* 提示首字母按钮 */}
-                            {status === 'idle' && (
-                                <div className="absolute top-3 right-3 text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded border border-gray-100">
-                                    Hint: {currentCard.word.length} 字母
-                                </div>
-                            )}
-                            
+                            {status === 'idle' && <div className="absolute top-3 right-3 text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded border border-gray-100">Hint: {currentCard.word.length} 字母</div>}
                             <div className="space-y-2">
                                 {currentCard.meanings.map((m, i) => (
-                                    <div key={i} className="text-gray-800 text-lg md:text-xl font-medium">
-                                        <span className="text-sm text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded mr-2 align-middle">{m.pos}</span>
-                                        {m.def}
-                                    </div>
+                                    <div key={i} className="text-gray-800 text-lg md:text-xl font-medium"><span className="text-sm text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded mr-2 align-middle">{m.pos}</span>{m.def}</div>
                                 ))}
                             </div>
                         </div>
 
-                        {/* 输入与反馈区域 */}
                         <div className={`w-full transition-transform duration-100 ${shake ? 'translate-x-[-10px]' : ''} ${shake ? 'translate-x-[10px]' : ''}`} style={shake ? {animation: 'shake 0.4s cubic-bezier(.36,.07,.19,.97) both'} : {}}>
-                            
                             {status === 'success' ? (
-                                <div className="animate-fade-in text-center mb-6">
-                                    <div className="text-3xl font-bold text-green-600 mb-2 flex items-center justify-center gap-2">
-                                        <Icon name="Check" size={32}/> {currentCard.word}
-                                    </div>
-                                    <p className="text-green-500 font-medium">拼写正确！</p>
-                                </div>
+                                <div className="animate-fade-in text-center mb-6"><div className="text-3xl font-bold text-green-600 mb-2 flex items-center justify-center gap-2"><Icon name="Check" size={32}/> {currentCard.word}</div><p className="text-green-500 font-medium">拼写正确！</p></div>
                             ) : status === 'revealed' ? (
-                                <div className="animate-fade-in text-center mb-6">
-                                    <div className="text-3xl font-bold text-red-500 mb-2">{currentCard.word}</div>
-                                    <p className="text-red-400">正确拼写如上</p>
-                                </div>
+                                <div className="animate-fade-in text-center mb-6"><div className="text-3xl font-bold text-red-500 mb-2">{currentCard.word}</div><p className="text-red-400">正确拼写如上</p></div>
                             ) : (
-                                <input
-                                    ref={inputRef}
-                                    type="text"
-                                    value={input}
-                                    onChange={e => { setInput(e.target.value); setStatus('idle'); }}
-                                    onKeyDown={e => { if(e.key === 'Enter') handleSubmit(); }}
-                                    placeholder="输入对应的英文单词..."
-                                    className={`w-full p-4 text-center text-2xl font-bold rounded-xl border-2 outline-none transition-all shadow-sm
-                                        ${status === 'error' ? 'border-red-400 bg-red-50 text-red-600' : 'border-gray-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10'}
-                                    `}
-                                    autoComplete="off"
-                                    autoCorrect="off"
-                                    autoCapitalize="off"
-                                    spellCheck="false"
-                                />
+                                <input ref={inputRef} type="text" value={input} onChange={e => { setInput(e.target.value); setStatus('idle'); }} onKeyDown={e => { if(e.key === 'Enter') handleSubmit(); }} placeholder="输入对应的英文单词..." className={`w-full p-4 text-center text-2xl font-bold rounded-xl border-2 outline-none transition-all shadow-sm ${status === 'error' ? 'border-red-400 bg-red-50 text-red-600' : 'border-gray-200 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10'}`} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" />
                             )}
                         </div>
-
-                        {/* 抖动动画样式 */}
                         <style>{`@keyframes shake { 10%, 90% { transform: translate3d(-1px, 0, 0); } 20%, 80% { transform: translate3d(2px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-4px, 0, 0); } 40%, 60% { transform: translate3d(4px, 0, 0); } }`}</style>
-
                     </div>
 
-                    {/* 底部键盘/按钮区 */}
-                    <div className="p-4 bg-white border-t border-gray-100 safe-bottom">
+                    {/* 🔥 底部按钮区：增加 pb-10 和 mb-safe 防止键盘遮挡 */}
+                    <div className="p-4 bg-white border-t border-gray-100 safe-bottom pb-10 shadow-[0_-5px_20px_rgba(0,0,0,0.02)] z-20">
                         {status === 'idle' || status === 'error' ? (
                             <div className="flex gap-3">
                                 <button onClick={handleGiveUp} className="px-6 py-4 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition">不会</button>
-                                <button onClick={handleSubmit} className="flex-1 py-4 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg transition active:scale-95">提交</button>
+                                <button onClick={handleSubmit} className="flex-1 py-4 rounded-xl font-bold text-white bg-cyan-600 hover:bg-cyan-700 shadow-lg transition active:scale-95">提交</button>
                             </div>
                         ) : (
-                            <button onClick={handleNext} className="w-full py-4 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg transition active:scale-95 flex items-center justify-center gap-2">
-                                下一个 <Icon name="ArrowLeft" className="rotate-180" size={20}/>
-                            </button>
+                            <button onClick={handleNext} className="w-full py-4 rounded-xl font-bold text-white bg-cyan-600 hover:bg-cyan-700 shadow-lg transition active:scale-95 flex items-center justify-center gap-2">下一个 <Icon name="ArrowLeft" className="rotate-180" size={20}/></button>
                         )}
                     </div>
                 </div>
