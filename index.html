@@ -1262,7 +1262,6 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
     
     // 按优先级排序：先复习 interval 越小的（越难的），再随机
     q = q.sort((a, b) => (a.stats.interval - b.stats.interval) || (Math.random() - 0.5));
-}
                     } else if (sessionConfig.type === 'group_study') {
                         const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
                         const batchId = sessionConfig.batchId;
