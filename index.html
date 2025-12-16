@@ -1004,8 +1004,14 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                                             <div className="flex items-center mt-1 space-x-2"><span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200">Group {g.index}</span></div>
                                         </div>
                                         <div className="flex space-x-1">
-                                            <button onClick={(e) => { e.stopPropagation(); setSessionConfig({ type: 'group_spelling', category, batchId: g.batchId, batchIndex: g.batchIndex }); setView('spelling'); }} className="p-1.5 bg-cyan-50 text-cyan-600 rounded hover:bg-cyan-100 transition" title="拼写模式"><Icon name="Keyboard" size={16}/></button>
-                                            {/* 🔥 智能按钮：只在有生词时高亮 */}
+{/* 1. 拼写模式 (全量) */}
+                                            <button onClick={(e) => { e.stopPropagation(); setSessionConfig({ type: 'group_spelling', category, batchId: g.batchId, batchIndex: g.batchIndex }); setView('spelling'); }} className="p-1.5 bg-cyan-50 text-cyan-600 rounded hover:bg-cyan-100 transition mr-1" title="拼写模式(全)"><Icon name="Keyboard" size={16}/></button>
+                                            
+                                            {/* 🔥 2. 新增：只背生词 (红/黄单词) */}
+                                            <button onClick={(e) => { e.stopPropagation(); setSessionConfig({ type: 'group_study', filter: 'hard', category, batchId: g.batchId, batchIndex: g.batchIndex }); setView('study'); }} className="p-1.5 bg-orange-50 text-orange-600 rounded hover:bg-orange-100 transition mr-1" title="只背生词"><Icon name="Book" size={16}/></button>
+
+                                            {/* 🔥 3. 新增：只拼生词 (红/黄单词) */}
+                                            <button onClick={(e) => { e.stopPropagation(); setSessionConfig({ type: 'group_spelling', filter: 'hard', category, batchId: g.batchId, batchIndex: g.batchIndex }); setView('spelling'); }} className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition mr-1" title="只拼生词"><Icon name="Edit" size={16}/></button>                                            {/* 🔥 智能按钮：只在有生词时高亮 */}
                                             <button onClick={(e) => { e.stopPropagation(); generateStory(g.words, g.batchName); }} className={`p-1.5 rounded transition ${g.green === g.total ? 'bg-gray-100 text-gray-400' : 'bg-amber-50 text-amber-600 hover:bg-amber-100 animate-pulse'}`} title={g.green === g.total ? "已全部掌握" : "攻克生词"}><Icon name="Sparkles" size={16}/></button>
                                             <button onClick={(e) => openEditModal(e, g.batchId, g.batchName, g.desc)} className="p-1.5 bg-gray-50 text-gray-600 rounded hover:bg-indigo-50 hover:text-indigo-600 transition" title="编辑"><Icon name="Edit" size={16}/></button>
                                             <button onClick={(e) => openMoveModal(e, g.words)} className="p-1.5 bg-blue-50 text-blue-500 rounded hover:bg-blue-100 transition" title="转移"><Icon name="Move" size={16}/></button>
@@ -1269,6 +1275,9 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                         const start = sessionConfig.batchIndex * groupSize;
                         const end = start + groupSize;
                         const targetGroup = batchWords.slice(start, end);
+                        if (sessionConfig.filter === 'hard') {
+                            targetGroup = targetGroup.filter(w => !w.stats || w.stats.interval <= 1);
+                        }
                         const newWords = targetGroup.filter(w => !w.stats || w.stats.interval === 0);
                         const reviewWords = targetGroup.filter(w => w.stats && w.stats.interval !== 0);
                         q = [...newWords, ...reviewWords];
@@ -1654,93 +1663,82 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
             );
         };
 
-      // --- 🔥 新增：拼写模式核心组件 (升级版：含存档、防遮挡、重置) ---
+     // --- 🔥 拼写模式最终版 (含生词筛选、强制重写、Strict模式) ---
         const SpellingSession = ({ words, setWords, sessionConfig, onExit, config }) => {
             const [queue, setQueue] = useState([]);
             const [currentIdx, setCurrentIdx] = useState(0);
             const [input, setInput] = useState("");
-            const [status, setStatus] = useState("idle"); // idle, success, error, revealed
+            // status: idle(输入中), success(成功), error(错误), revealed(看答案), rewriting(强制重写中)
+            const [status, setStatus] = useState("idle"); 
             const [isFinished, setIsFinished] = useState(false);
             const [shake, setShake] = useState(false);
             const inputRef = useRef(null);
 
-            // 1. 进度 Key 生成器 (与背单词模式保持一致，按天存档)
+            // 1. 进度 Key
             const getProgressKey = () => {
                 const dateStr = new Date().toDateString();
-                const base = `kaoyan_prog_${dateStr}_${sessionConfig.type}`;
-                if (sessionConfig.type.includes('group')) {
-                    return `${base}_${sessionConfig.batchId}_${sessionConfig.batchIndex}`;
-                }
+                const suffix = sessionConfig.filter === 'hard' ? '_hard' : '';
+                const base = `kaoyan_prog_${dateStr}_${sessionConfig.type}${suffix}`;
+                if (sessionConfig.type.includes('group')) return `${base}_${sessionConfig.batchId}_${sessionConfig.batchIndex}`;
                 return `${base}_review`;
             };
 
-            // 2. 保存进度
             const saveProgress = (newQueue, newIdx) => {
-                try {
-                    const key = getProgressKey();
-                    const data = { queue: newQueue, currentIdx: newIdx, timestamp: Date.now() };
-                    localStorage.setItem(key, JSON.stringify(data));
-                } catch (e) {}
+                try { localStorage.setItem(getProgressKey(), JSON.stringify({ queue: newQueue, currentIdx: newIdx, timestamp: Date.now() })); } catch (e) {}
             };
 
-            // 3. 清除进度
-            const clearProgress = () => {
-                localStorage.removeItem(getProgressKey());
-            };
-
-            // 4. 初始化 (优先读取存档)
+            // 2. 初始化 (含 filter 支持)
             useEffect(() => {
                 const key = getProgressKey();
                 const savedStr = localStorage.getItem(key);
-                let loaded = false;
-
+                
                 if (savedStr) {
                     try {
                         const saved = JSON.parse(savedStr);
                         if (saved.queue && saved.queue.length > 0) {
                             setQueue(saved.queue);
                             setCurrentIdx(saved.currentIdx);
-                            loaded = true;
                             if (saved.currentIdx >= saved.queue.length) setIsFinished(true);
-                            // 恢复焦点
                             setTimeout(() => inputRef.current?.focus(), 500);
+                            return;
                         }
                     } catch (e) {}
                 }
 
-                if (!loaded) {
-                    let q = [];
-                    const groupSize = config.groupSize || 208;
+                // 无存档，重新加载
+                let q = [];
+                const groupSize = config.groupSize || 208;
+                
+                if (sessionConfig.type.includes('review')) {
+                     q = words.filter(w => w.stats && (w.stats.nextReview <= Date.now() || (w.stats.interval === 0 && w.stats.reviewCount > 0)));
+                     if (q.length === 0) q = words.filter(w => w.stats && w.stats.reviewCount > 0 && w.stats.interval <= 1).slice(0, 20);
+                     q = q.sort(() => Math.random() - 0.5);
+                } else if (sessionConfig.type.includes('group')) {
+                    const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
+                    const batchWords = catWords.filter(w => (w.importId || 'default') === sessionConfig.batchId);
+                    const start = sessionConfig.batchIndex * groupSize;
+                    q = batchWords.slice(start, start + groupSize);
                     
-                    if (sessionConfig.type === 'review' || sessionConfig.type === 'spelling_review') {
-                         q = words.filter(w => w.stats && (w.stats.nextReview <= Date.now() || (w.stats.interval === 0 && w.stats.reviewCount > 0)));
-                         if (q.length === 0) q = words.filter(w => w.stats && w.stats.reviewCount > 0 && w.stats.interval <= 1).slice(0, 20);
-                         q = q.sort(() => Math.random() - 0.5);
-                    } else if (sessionConfig.type.includes('group')) {
-                        const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
-                        const batchWords = catWords.filter(w => (w.importId || 'default') === sessionConfig.batchId);
-                        const start = sessionConfig.batchIndex * groupSize;
-                        q = batchWords.slice(start, start + groupSize);
+                    // 🔥 核心：支持只拼生词
+                    if (sessionConfig.filter === 'hard') {
+                        q = q.filter(w => !w.stats || w.stats.interval <= 1);
                     }
-                    setQueue(q);
-                    setCurrentIdx(0);
-                    if(q.length > 0) saveProgress(q, 0); // 初始存档
-                    setTimeout(() => inputRef.current?.focus(), 500);
                 }
+                setQueue(q);
+                setCurrentIdx(0);
+                if(q.length > 0) saveProgress(q, 0);
+                setTimeout(() => inputRef.current?.focus(), 500);
             }, [sessionConfig]);
 
+            // 3. 自动播放
             useEffect(() => {
-                if (queue.length > 0 && !isFinished) {
+                if (queue.length > 0 && !isFinished && status === 'idle') {
                     const word = queue[currentIdx]?.word;
-                    if (word) {
-                        // 延迟 500ms 播放，给用户一点反应时间，体验更好
-                        const timer = setTimeout(() => playAudio(word), 500);
-                        return () => clearTimeout(timer);
-                    }
+                    if (word) { const timer = setTimeout(() => playAudio(word), 500); return () => clearTimeout(timer); }
                 }
-            }, [currentIdx, queue, isFinished]);
+            }, [currentIdx, queue, isFinished, status]);
 
-            // 5. 提交逻辑
+            // 4. 提交检查
             const handleSubmit = () => {
                 if (!input.trim()) return;
                 const currentCard = queue[currentIdx];
@@ -1749,28 +1747,51 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 if (isCorrect) {
                     setStatus("success");
                     playAudio(currentCard.word);
-                    handleRating(3); 
+                    
+                    // 🔥 如果是“强制重写”阶段拼对了
+                    if (status === 'rewriting') {
+                        // 1. 把它加入队列末尾，稍后再次复习 (Requeue)
+                        const repeatCard = { ...currentCard, isRepeat: true }; 
+                        const newQueue = [...queue, repeatCard];
+                        setQueue(newQueue);
+                        // 2. 只有第一次拼对才算 rating 3，重写对的不算分，直接下一题
+                        setTimeout(() => handleNext(newQueue), 800);
+                    } else {
+                        // 正常拼对，记录成绩
+                        handleRating(3); 
+                    }
                 } else {
-                    setStatus("error");
+                    // 拼错抖动
                     setShake(true);
                     setTimeout(() => setShake(false), 500);
+                    if (status !== 'rewriting') setStatus("error"); // 只有非重写状态才显示红色错误提示，重写状态保持专注
                 }
             };
 
+            // 5. “不会”按钮逻辑 -> 变更为：显示答案 -> 等待重写
             const handleGiveUp = () => {
-                setStatus("revealed");
-                playAudio(queue[currentIdx].word);
-                handleRating(1); 
+                const currentCard = queue[currentIdx];
+                setStatus("revealed"); // 进入“看答案”状态
+                playAudio(currentCard.word);
+                handleRating(1); // 直接记为不认识 (Rating 1)
             };
 
-            const handleNext = () => {
+            // 6. 开始强制重写
+            const startRewrite = () => {
+                setStatus("rewriting"); // 进入“遮挡重写”状态
+                setInput(""); // 清空输入框
+                setTimeout(() => inputRef.current?.focus(), 100);
+            };
+
+            const handleNext = (overrideQueue = null) => {
                 setInput("");
                 setStatus("idle");
                 const nextIdx = currentIdx + 1;
-                // 保存进度
-                saveProgress(queue, nextIdx);
+                const q = overrideQueue || queue;
+                
+                saveProgress(q, nextIdx);
 
-                if (nextIdx >= queue.length) {
+                if (nextIdx >= q.length) {
                     setIsFinished(true);
                 } else {
                     setCurrentIdx(nextIdx);
@@ -1778,8 +1799,17 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 }
             };
 
+            // 7. 评分逻辑 (Strict Mode)
             const handleRating = (rating) => {
                 const word = queue[currentIdx];
+
+                // 🔥 Strict Mode: 如果是重复出现的词(isRepeat)，且这次拼对了(3)，
+                // 此时不应该增加熟练度(interval)，因为这是“刚才刚错过”的词。
+                if (word.isRepeat && rating === 3) {
+                    setTimeout(() => handleNext(), 800);
+                    return; // 直接跳过数据库更新
+                }
+
                 const currentStats = word.stats || { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0, lastReviewTime: 0 };
                 const result = calculateNextReview(rating, currentStats.interval, currentStats.easeFactor, currentStats.reviewCount, currentStats.lastReviewTime);
                 
@@ -1796,48 +1826,20 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 localStorage.setItem('kaoyan_vocab_list', JSON.stringify(updatedWords));
 
                 if (rating === 3) {
-                    setTimeout(handleNext, 800); // 答对自动下一题
+                    setTimeout(() => handleNext(), 800);
                 }
+                // 注意：Rating 1 (GiveUp) 不需要自动跳转，因为还要进入 rewrite 流程
             };
 
-            // 再学一遍逻辑
             const handleRestart = () => {
-                if(!confirm("确定要重新开始吗？进度将被重置。")) return;
-                clearProgress();
-                // 强制刷新当前会话
-                const groupSize = config.groupSize || 208;
-                let q = [];
-                if (sessionConfig.type.includes('group')) {
-                    const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
-                    const batchWords = catWords.filter(w => (w.importId || 'default') === sessionConfig.batchId);
-                    const start = sessionConfig.batchIndex * groupSize;
-                    q = batchWords.slice(start, start + groupSize);
-                } else {
-                    q = words.filter(w => w.stats && (w.stats.nextReview <= Date.now())).slice(0, 20); // 简单复位
-                }
-                setQueue(q);
-                setCurrentIdx(0);
-                setIsFinished(false);
-                setStatus('idle');
-                setInput("");
-                saveProgress(q, 0);
-                setTimeout(() => inputRef.current?.focus(), 500);
+                if(!confirm("确定要重新开始吗？")) return;
+                localStorage.removeItem(getProgressKey());
+                // 刷新页面最简单，或者重新触发 init
+                window.location.reload(); 
             };
 
-            if (queue.length === 0 && !isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="text-gray-400 mb-4"><Icon name="Check" size={48}/></div><p>没有需要拼写的单词！</p><button onClick={onExit} className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg">返回</button></div>;
-
-            if (isFinished) return (
-                <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50 animate-fade-in">
-                    <div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full">
-                        <div className="bg-indigo-100 p-6 rounded-full mb-6 text-indigo-600"><Icon name="Keyboard" size={48}/></div>
-                        <h2 className="text-2xl font-bold text-gray-800 mb-2">拼写练习完成 🎉</h2>
-                        <div className="w-full space-y-3 mt-6">
-                            <button onClick={onExit} className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition">返回列表</button>
-                            <button onClick={handleRestart} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition flex items-center justify-center gap-2"><Icon name="RotateCcw" size={18}/> 再拼一遍</button>
-                        </div>
-                    </div>
-                </div>
-            );
+            if (queue.length === 0 && !isFinished) return <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50"><div className="text-gray-400 mb-4"><Icon name="Check" size={48}/></div><p>太棒了！该分组没有生词。</p><button onClick={onExit} className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-lg">返回</button></div>;
+            if (isFinished) return (<div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-gray-50 animate-fade-in"><div className="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 flex flex-col items-center max-w-sm w-full"><div className="bg-indigo-100 p-6 rounded-full mb-6 text-indigo-600"><Icon name="Keyboard" size={48}/></div><h2 className="text-2xl font-bold text-gray-800 mb-2">拼写练习完成 🎉</h2><div className="w-full space-y-3 mt-6"><button onClick={onExit} className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition">返回列表</button><button onClick={handleRestart} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg font-bold transition flex items-center justify-center gap-2"><Icon name="RotateCcw" size={18}/> 再拼一遍</button></div></div></div>);
 
             const currentCard = queue[currentIdx];
 
@@ -1845,24 +1847,17 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 <div className="flex-1 flex flex-col bg-gray-50 relative h-full overflow-hidden">
                     <div className="bg-white p-4 shadow-sm flex items-center justify-between safe-top z-10">
                         <button onClick={onExit} className="p-2 text-gray-500 hover:bg-gray-100 rounded-full"><Icon name="ArrowLeft" size={24}/></button>
-                        <div className="font-bold text-gray-700">拼写模式 ({currentIdx + 1}/{queue.length})</div>
+                        <div className="font-bold text-gray-700">
+                            {sessionConfig.filter==='hard' ? '生词本拼写' : '拼写模式'} ({currentIdx + 1}/{queue.length})
+                        </div>
                         <div className="w-8"></div>
                     </div>
-                    
-                    <div className="w-full h-1.5 bg-gray-200">
-                        <div className="h-full bg-cyan-500 transition-all duration-300" style={{width: `${(currentIdx / queue.length) * 100}%`}}></div>
-                    </div>
+                    <div className="w-full h-1.5 bg-gray-200"><div className="h-full bg-cyan-500 transition-all duration-300" style={{width: `${(currentIdx / queue.length) * 100}%`}}></div></div>
 
-                    <div className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-lg mx-auto overflow-y-auto custom-scroll pb-32"> {/* 🔥 pb-32 增加内容区底部留白 */}
+                    <div className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-lg mx-auto overflow-y-auto custom-scroll pb-32">
                         <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8 text-center min-h-[160px] flex flex-col justify-center items-center relative">
                             {status === 'idle' && <div className="absolute top-3 right-3 text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded border border-gray-100">Hint: {currentCard.word.length} 字母</div>}
-                           <button 
-                                onClick={() => playAudio(currentCard.word)} 
-                                className="mb-6 w-14 h-14 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-100 hover:scale-110 transition shadow-sm active:scale-95"
-                                title="播放读音"
-                            >
-                                <Icon name="Volume2" size={28}/>
-                            </button>
+                            <button onClick={() => playAudio(currentCard.word)} className="mb-6 w-14 h-14 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-100 hover:scale-110 transition shadow-sm active:scale-95"><Icon name="Volume2" size={28}/></button>
                             <div className="space-y-2">
                                 {currentCard.meanings.map((m, i) => (
                                     <div key={i} className="text-gray-800 text-lg md:text-xl font-medium"><span className="text-sm text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded mr-2 align-middle">{m.pos}</span>{m.def}</div>
@@ -1871,26 +1866,40 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                         </div>
 
                         <div className={`w-full transition-transform duration-100 ${shake ? 'translate-x-[-10px]' : ''} ${shake ? 'translate-x-[10px]' : ''}`} style={shake ? {animation: 'shake 0.4s cubic-bezier(.36,.07,.19,.97) both'} : {}}>
+                            {/* 🔥 状态机 UI 逻辑 */}
                             {status === 'success' ? (
                                 <div className="animate-fade-in text-center mb-6"><div className="text-3xl font-bold text-green-600 mb-2 flex items-center justify-center gap-2"><Icon name="Check" size={32}/> {currentCard.word}</div><p className="text-green-500 font-medium">拼写正确！</p></div>
                             ) : status === 'revealed' ? (
-                                <div className="animate-fade-in text-center mb-6"><div className="text-3xl font-bold text-red-500 mb-2">{currentCard.word}</div><p className="text-red-400">正确拼写如上</p></div>
-                            ) : (
-                                <input ref={inputRef} type="text" value={input} onChange={e => { setInput(e.target.value); setStatus('idle'); }} onKeyDown={e => { if(e.key === 'Enter') handleSubmit(); }} placeholder="输入对应的英文单词..." className={`w-full p-4 text-center text-2xl font-bold rounded-xl border-2 outline-none transition-all shadow-sm ${status === 'error' ? 'border-red-400 bg-red-50 text-red-600' : 'border-gray-200 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10'}`} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" />
+                                <div className="animate-fade-in text-center mb-6">
+                                    <div className="text-4xl font-black text-indigo-600 mb-4 tracking-wide">{currentCard.word}</div>
+                                    <p className="text-gray-500 text-sm mb-4">请记住拼写，然后点击下方按钮重写</p>
+                                </div>
+                            ) : status === 'rewriting' ? (
+                                <div className="animate-fade-in text-center mb-4"><p className="text-indigo-600 font-bold mb-2">🔒 答案已遮挡，请默写：</p></div>
+                            ) : null}
+
+                            {/* 输入框：除了 revealed 状态都显示，rewriting 状态下输入框清空并聚焦 */}
+                            {status !== 'revealed' && status !== 'success' && (
+                                <input ref={inputRef} type="text" value={input} onChange={e => { setInput(e.target.value); if(status==='idle'||status==='error') setStatus('idle'); }} onKeyDown={e => { if(e.key === 'Enter') handleSubmit(); }} placeholder={status==='rewriting'?"请重新输入...":"输入对应的英文单词..."} className={`w-full p-4 text-center text-2xl font-bold rounded-xl border-2 outline-none transition-all shadow-sm ${status === 'error' ? 'border-red-400 bg-red-50 text-red-600' : (status==='rewriting'?'border-indigo-400 bg-indigo-50 text-indigo-800':'border-gray-200 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10')}`} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" />
                             )}
                         </div>
-                        <style>{`@keyframes shake { 10%, 90% { transform: translate3d(-1px, 0, 0); } 20%, 80% { transform: translate3d(2px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-4px, 0, 0); } 40%, 60% { transform: translate3d(4px, 0, 0); } }`}</style>
                     </div>
 
-                    {/* 🔥 底部按钮区：增加 pb-10 和 mb-safe 防止键盘遮挡 */}
                     <div className="p-4 bg-white border-t border-gray-100 safe-bottom pb-10 shadow-[0_-5px_20px_rgba(0,0,0,0.02)] z-20">
                         {status === 'idle' || status === 'error' ? (
                             <div className="flex gap-3">
                                 <button onClick={handleGiveUp} className="px-6 py-4 rounded-xl font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition">不会</button>
                                 <button onClick={handleSubmit} className="flex-1 py-4 rounded-xl font-bold text-white bg-cyan-600 hover:bg-cyan-700 shadow-lg transition active:scale-95">提交</button>
                             </div>
+                        ) : status === 'revealed' ? (
+                            // 🔥 强制重写按钮
+                            <button onClick={startRewrite} className="w-full py-4 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg transition active:scale-95">我记住了，去默写</button>
+                        ) : status === 'rewriting' ? (
+                            // 重写提交按钮
+                            <button onClick={handleSubmit} className="w-full py-4 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg transition active:scale-95">验证拼写</button>
                         ) : (
-                            <button onClick={handleNext} className="w-full py-4 rounded-xl font-bold text-white bg-cyan-600 hover:bg-cyan-700 shadow-lg transition active:scale-95 flex items-center justify-center gap-2">下一个 <Icon name="ArrowLeft" className="rotate-180" size={20}/></button>
+                             // 成功状态（其实会自动跳转，这里只是兜底）
+                             <button className="w-full py-4 rounded-xl font-bold text-white bg-green-500 shadow-lg">正确！</button>
                         )}
                     </div>
                 </div>
