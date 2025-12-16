@@ -1729,6 +1729,17 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 }
             }, [sessionConfig]);
 
+            useEffect(() => {
+                if (queue.length > 0 && !isFinished) {
+                    const word = queue[currentIdx]?.word;
+                    if (word) {
+                        // 延迟 500ms 播放，给用户一点反应时间，体验更好
+                        const timer = setTimeout(() => playAudio(word), 500);
+                        return () => clearTimeout(timer);
+                    }
+                }
+            }, [currentIdx, queue, isFinished]);
+
             // 5. 提交逻辑
             const handleSubmit = () => {
                 if (!input.trim()) return;
@@ -1845,6 +1856,13 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     <div className="flex-1 flex flex-col items-center justify-center p-6 w-full max-w-lg mx-auto overflow-y-auto custom-scroll pb-32"> {/* 🔥 pb-32 增加内容区底部留白 */}
                         <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8 text-center min-h-[160px] flex flex-col justify-center items-center relative">
                             {status === 'idle' && <div className="absolute top-3 right-3 text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded border border-gray-100">Hint: {currentCard.word.length} 字母</div>}
+                           <button 
+                                onClick={() => playAudio(currentCard.word)} 
+                                className="mb-6 w-14 h-14 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-100 hover:scale-110 transition shadow-sm active:scale-95"
+                                title="播放读音"
+                            >
+                                <Icon name="Volume2" size={28}/>
+                            </button>
                             <div className="space-y-2">
                                 {currentCard.meanings.map((m, i) => (
                                     <div key={i} className="text-gray-800 text-lg md:text-xl font-medium"><span className="text-sm text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded mr-2 align-middle">{m.pos}</span>{m.def}</div>
