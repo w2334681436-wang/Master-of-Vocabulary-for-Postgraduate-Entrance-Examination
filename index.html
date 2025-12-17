@@ -1135,17 +1135,30 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                 return `${base}_review`; 
             };
 
-            // 2. 保存进度
+           // 🔥 修复版 saveProgress：给存档瘦身，防止 LocalStorage 爆满
             const saveProgress = (newQueue, newIdx) => {
                 try {
                     const key = getProgressKey();
+                    
+                    // 1. 瘦身逻辑：只保存必要数据
+                    // chatHistory 和 aiNote 体积很大，且已存在主数据库(words)中
+                    // 进度条(queue)里只需保留 ID 和状态，避免重复占用空间
+                    const slimQueue = newQueue.map(w => {
+                        // 解构出大字段并丢弃(...rest 即为保留的部分)
+                        const { chatHistory, aiNote, aiSyntax, ...rest } = w;
+                        return rest;
+                    });
+
                     const data = {
-                        queue: newQueue, 
+                        queue: slimQueue, 
                         currentIdx: newIdx,
                         timestamp: Date.now()
                     };
                     localStorage.setItem(key, JSON.stringify(data));
-                } catch (e) { console.error("Save failed", e); }
+                } catch (e) { 
+                    // 2. 容错处理：如果还是存不下，只打印警告，不要崩坏页面
+                    console.warn("进度保存失败 (空间不足)，但不影响主数据:", e); 
+                }
             };
 
             // 3. 清除进度
@@ -1817,8 +1830,11 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
 
                 const updatedWords = words.map(w => w.id === word.id ? { ...w, stats: newStats } : w);
                 setWords(updatedWords);
-                localStorage.setItem('kaoyan_vocab_list', JSON.stringify(updatedWords));
-
+                try {
+                    localStorage.setItem('kaoyan_vocab_list', JSON.stringify(updatedWords));
+                } catch (e) {
+                    alert("⚠️ 存储空间已满！请到[数据中心]导出备份，然后清空数据。");
+                }
                 if (rating === 3) {
                     setTimeout(() => handleNext(), 800);
                 }
