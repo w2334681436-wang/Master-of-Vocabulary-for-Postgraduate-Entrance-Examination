@@ -189,7 +189,7 @@
             }
         };
 
-// 🔥 核心修复：优化算法，引入“日历日”对齐和“早鸟机制”
+// 🔥 核心修复：优化算法，引入“日历日”对齐、最大数量限制和 Fuzzing（模糊因子）
 const calculateNextReview = (rating, currentInterval, easeFactor, currentReviewCount, lastReviewTime) => {
     const now = Date.now();
     // 判定是否为“同一天内的短期重复” (例如：距离上次复习小于 16 小时)
@@ -197,58 +197,48 @@ const calculateNextReview = (rating, currentInterval, easeFactor, currentReviewC
 
     let nextInterval, nextEaseFactor = easeFactor;
     const newReviewCount = (currentReviewCount || 0) + 1;
-    let nextReviewTime = 0; // 存储计算出的下次复习时间戳
+    let nextReviewTime = 0; 
 
     if (rating === 1) { // 不认识
-        // 无论何时，不认识直接重置
         return { 
             interval: 0, 
             easeFactor: Math.max(1.3, easeFactor - 0.2), 
             isDueNow: true, 
             reviewCount: newReviewCount,
-            nextReview: now // 立即过期
+            nextReview: now 
         };
     } else if (rating === 2) { // 不熟
-        // 变成 0.5 (约12小时后)，进入短期高频复习流
         return { 
             interval: 0.5, 
             easeFactor: Math.max(1.3, easeFactor - 0.15), 
             isDueNow: true, 
             reviewCount: newReviewCount,
-            nextReview: now + (0.5 * 24 * 60 * 60 * 1000) // 暂按时间推算
+            nextReview: now + (0.5 * 24 * 60 * 60 * 1000) 
         }; 
     } else { // 认识 (Rating 3)
         if (isSameDayRepeat && currentInterval > 0) {
-            // 🔥 重点逻辑：如果是同一天内重复复习已掌握的词，只作为巩固
-            // 保持原间隔不变，不增加 EaseFactor，防止“刷绿”过快
             nextInterval = currentInterval;
-            
-            // 这种情况下，保持原有的复习日期不变（或者简单顺延）
-            // 这里我们选择简单顺延当前间隔
             nextReviewTime = now + (nextInterval * 24 * 60 * 60 * 1000);
         } else {
-            // 正常的跨天复习逻辑
-            if (currentInterval === 0) {
-                // ✨ 修复：第一次复习设为 0.8 天，配合下方的日历对齐逻辑，
-                // 确保不管几点背的，只要到了明天就能刷
-                nextInterval = 0.8; 
-            }
-            else if (currentInterval <= 0.8) nextInterval = 1; // 修正小数间隔
-            else if (currentInterval === 1) nextInterval = 3;
+            if (currentInterval === 0) nextInterval = 1; // 修正：初次掌握直接设为1天
+            else if (currentInterval <= 1) nextInterval = 3;
             else nextInterval = Math.round(currentInterval * easeFactor);
             
             nextEaseFactor = easeFactor + 0.1;
 
-            // 🛠️ 大师级优化：将 nextReview 对齐到“目标日期的凌晨 4 点”
+            // 🛠️ 算法优化：加入 5% 的随机模糊因子 (Fuzzing)，防止复习堆积
+            // 例如 10 天可能会变成 9.5~10.5 天，打散同一天复习的单词
+            const fuzz = 0.95 + Math.random() * 0.1; 
+            nextInterval = nextInterval * fuzz;
+
+            // 对齐到“目标日期的凌晨 4 点”
             const nowDate = new Date(now);
-            // 计算需要增加的天数（向上取整，0.8 也会变成 1 天，保证是“明天”）
             const daysToAdd = Math.ceil(nextInterval); 
             
             const targetDate = new Date(nowDate);
-            targetDate.setDate(nowDate.getDate() + daysToAdd); // 日期往后推
-            targetDate.setHours(4, 0, 0, 0); // ⏰ 强制设为凌晨 4:00:00
+            targetDate.setDate(nowDate.getDate() + daysToAdd); 
+            targetDate.setHours(4, 0, 0, 0); 
             
-            // 如果计算出的时间比现在还早（极端情况），防御性加一天
             if (targetDate.getTime() <= now) {
                  targetDate.setDate(targetDate.getDate() + 1);
             }
@@ -261,7 +251,7 @@ const calculateNextReview = (rating, currentInterval, easeFactor, currentReviewC
             easeFactor: nextEaseFactor, 
             isDueNow: false, 
             reviewCount: newReviewCount,
-            nextReview: nextReviewTime, // ✨ 返回计算好的精准时间
+            nextReview: nextReviewTime, 
             lastReviewTime: now
         };
     }
@@ -714,6 +704,19 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
             };
 
             const level = getLevelInfo(stats.masteredTotal);
+           // 🔥 新增：重置复习进度功能
+            const clearReviewProgress = (e) => {
+                e.stopPropagation();
+                if(!confirm("确定要重置当前的复习进度吗？\n\n这【不会】删除你的单词记忆数据，\n只会清除当前“正在进行中”的队列缓存，\n并根据最新的算法重新生成今天的复习计划。")) return;
+                
+                // 清除所有以 kaoyan_prog_ 开头的进度缓存
+                Object.keys(localStorage).forEach(key => {
+                    if(key.startsWith('kaoyan_prog_')) localStorage.removeItem(key);
+                });
+                
+                alert("进度已重置！即将刷新...");
+                window.location.reload(); // 刷新页面以重新计算
+            };
             
             const standardCats = ['high', 'medium', 'low', 'zero'];
             const customCats = Object.keys(stats).filter(k => !standardCats.includes(k) && k !== 'review' && k !== 'uncategorized' && k !== 'masteredTotal');
@@ -755,17 +758,30 @@ const WordChat = ({ word, words, setWords, onClose, config }) => {
                             <div className="text-right text-xs text-gray-400 mt-2">距离下一等级还需 {level.next - stats.masteredTotal} 个熟练词</div>
                         </div>
 
-                        <div onClick={startReview} className="w-full bg-gradient-to-br from-indigo-600 to-violet-600 p-8 rounded-2xl text-white shadow-xl shadow-indigo-200 cursor-pointer transform transition hover:-translate-y-1 hover:shadow-2xl active:scale-[0.99] relative overflow-hidden flex flex-col md:flex-row justify-between items-center group">
+                       <div onClick={startReview} className="w-full bg-gradient-to-br from-indigo-600 to-violet-600 p-8 rounded-2xl text-white shadow-xl shadow-indigo-200 cursor-pointer transform transition hover:-translate-y-1 hover:shadow-2xl active:scale-[0.99] relative overflow-hidden flex flex-col md:flex-row justify-between items-center group">
                             <div className="z-10 relative text-center md:text-left">
                                 <h2 className="text-3xl font-bold mb-2 tracking-tight">智能复习计划</h2>
-                                <p className="text-indigo-100 text-lg opacity-90">今日待复习: <span className="font-bold text-white bg-white/20 px-3 py-0.5 rounded-lg ml-1">{stats.review}</span> 个单词</p>
+                                <p className="text-indigo-100 text-lg opacity-90">
+                                    今日上限: <span className="font-bold text-white bg-white/20 px-3 py-0.5 rounded-lg ml-1">200</span>
+                                    <span className="mx-2">|</span>
+                                    待复习: <span className="font-bold text-white bg-white/20 px-3 py-0.5 rounded-lg ml-1">{Math.min(stats.review, 200)}</span>
+                                </p>
                             </div>
+                            
+                            {/* 🔥 新增：重置按钮 (绝对定位在右上角) */}
+                            <button 
+                                onClick={clearReviewProgress} 
+                                className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-red-500/80 rounded-full text-white/70 hover:text-white transition z-20" 
+                                title="重置/修复复习进度"
+                            >
+                                <Icon name="Trash2" size={18}/>
+                            </button>
+
                             <div className="mt-4 md:mt-0 bg-white/20 w-20 h-20 rounded-full flex items-center justify-center z-10 relative group-hover:scale-110 transition duration-300 backdrop-blur-sm border border-white/30">
                                 <Icon name="Brain" size={40} className="text-white"/>
                             </div>
                             <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl"></div>
                             <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-indigo-900/20 rounded-full blur-2xl"></div>
-                            {stats.review > 0 && <div className="absolute top-6 right-6 w-3 h-3 bg-red-400 rounded-full animate-ping"></div>}
                         </div>
 
                         <div className="flex gap-3 mt-4 mb-8">
@@ -1256,25 +1272,33 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     let q = [];
                     const groupSize = config.groupSize || 208;
                     
-                     if (sessionConfig.type === 'review') {
-    // 1. 找出到了时间的词 (nextReview <= now) 且 (间隔不为0 OR 是曾经学过的回炉词)
-    q = words.filter(w => {
-        if (!w.stats) return false;
-        const isDue = w.stats.nextReview <= Date.now();
-        // 关键修复：如果 interval 是 0，但 reviewCount > 0，说明是忘掉的旧词，必须复习！
-        const isRelearning = w.stats.interval === 0 && w.stats.reviewCount > 0;
-        const isNormalReview = w.stats.interval > 0;
-        
-        return isDue && (isNormalReview || isRelearning);
-    });
+              if (sessionConfig.type === 'review') {
+                        // 1. 找出到了时间的词
+                        q = words.filter(w => {
+                            if (!w.stats) return false;
+                            const isDue = w.stats.nextReview <= Date.now();
+                            const isRelearning = w.stats.interval === 0 && w.stats.reviewCount > 0;
+                            const isNormalReview = w.stats.interval > 0;
+                            return isDue && (isNormalReview || isRelearning);
+                        });
 
-    // 2. 兜底逻辑：如果真没到日期的词，也别让用户闲着，抓几个“不熟”的（interval 小于 1 的）来巩固
-    if (q.length === 0) {
-        q = words.filter(w => w.stats && w.stats.reviewCount > 0 && w.stats.interval <= 1);
-    }
-    
-    // 按优先级排序：先复习 interval 越小的（越难的），再随机
-    q = q.sort((a, b) => (a.stats.interval - b.stats.interval) || (Math.random() - 0.5));
+                        // 2. 兜底逻辑
+                        if (q.length === 0) {
+                            q = words.filter(w => w.stats && w.stats.reviewCount > 0 && w.stats.interval <= 1);
+                        }
+                        
+                        // 🔥 3. 核心修改：按紧急程度排序，并截取前 200 个
+                        // (interval 越小越紧急，nextReview 越早越紧急)
+                        q.sort((a, b) => {
+                            if (a.stats.interval !== b.stats.interval) return a.stats.interval - b.stats.interval;
+                            return a.stats.nextReview - b.stats.nextReview;
+                        });
+
+                        // ✂️ 限制最大数量为 200
+                        if (q.length > 200) {
+                            q = q.slice(0, 200);
+                        }
+                        // 如果觉得顺序太死板，可以在截取后 shuffle 一下，这里保留排序以便优先复习重点
                     } else if (sessionConfig.type === 'group_study') {
                         const catWords = words.filter(w => (w.category || 'uncategorized') === sessionConfig.category);
                         const batchId = sessionConfig.batchId;
