@@ -1971,6 +1971,70 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
             const [aiInput, setAiInput] = useState('');
             const [isFetching, setIsFetching] = useState(false);
             const [fetchProgress, setFetchProgress] = useState({ current: 0, total: 0, success: 0, fail: 0 });
+          // --- 🔥 新增代码：拉取最新考研大纲 ---
+            const fetchSyllabus = async () => {
+                if(!confirm("即将下载最新版 (2025.7更新) 考研大纲词汇，确定吗？")) return;
+                
+                setIsFetching(true);
+                // 使用 exam-data 的最新 v7.1 JSON 源
+                const DATA_URL = "https://cdn.jsdelivr.net/gh/exam-data/NETEMVocabulary@master/netem_full_list.json";
+                
+                try {
+                    setFetchProgress({ current: 0, total: 0, success: 0, fail: 0 });
+                    const res = await fetch(DATA_URL);
+                    if(!res.ok) throw new Error("网络请求失败，请检查网络");
+                    
+                    const rawData = await res.json(); 
+                    
+                    const targetCat = 'zero'; // 默认归类
+                    const batchId = `syllabus-2026-v7.1`; // 批次ID
+                    
+                    // 保存分组元数据
+                    try {
+                        const metaStr = localStorage.getItem('kaoyan_group_meta');
+                        const meta = metaStr ? JSON.parse(metaStr) : {};
+                        meta[batchId] = { name: "2026考研大纲", desc: "基于 exam-data v7.1 (2025.7更新)" };
+                        localStorage.setItem('kaoyan_group_meta', JSON.stringify(meta));
+                    } catch(e) {}
+
+                    let currentWords = JSON.parse(JSON.stringify(words));
+                    let addedCount = 0;
+                    
+                    rawData.forEach((item, idx) => {
+                        // 查重：如果单词已存在则跳过
+                        if (currentWords.some(w => w.word.toLowerCase() === (item.word || "").toLowerCase())) return;
+
+                        // 简单处理释义
+                        const rawDef = item.def || "";
+                        const parsedMeanings = [{
+                            pos: "mix.",
+                            def: rawDef.replace(/\n/g, "; "),
+                            sentence: "",
+                            isMastered: false
+                        }];
+
+                        currentWords.push({
+                            id: `syll-${idx}`,
+                            word: item.word,
+                            phonetic: "", 
+                            category: targetCat,
+                            importId: batchId,
+                            meanings: parsedMeanings,
+                            stats: { interval: 0, easeFactor: 2.5, nextReview: 0, reviewCount: 0 }
+                        });
+                        addedCount++;
+                    });
+
+                    setWords(currentWords);
+                    localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords));
+                    alert(`✅ 导入成功！\n新增单词：${addedCount} 个\n\n提示：导入后建议使用 [修复] 功能分离词性，或使用 [AI 速查] 补全音标。`);
+
+                } catch (e) {
+                    alert("导入失败: " + e.message);
+                } finally {
+                    setIsFetching(false);
+                }
+            };
 
             const getTargetCategory = () => { if (importMode === 'frequency') return importCategory; return customGroupName.trim() || `Import ${new Date().toLocaleDateString()}`; };
             const saveBatchMeta = (batchId) => { if (isNewBatch && importBatchName.trim()) { try { const metaStr = localStorage.getItem('kaoyan_group_meta'); const meta = metaStr ? JSON.parse(metaStr) : {}; meta[batchId] = { name: importBatchName.trim(), desc: "" }; localStorage.setItem('kaoyan_group_meta', JSON.stringify(meta)); } catch (e) { console.error(e); } } };
@@ -2230,6 +2294,16 @@ if (!isNewBatch && existingIdx !== -1) {
                                     <div className="p-4 bg-purple-50 border border-purple-100 rounded-2xl shadow-sm flex flex-col justify-between">
                                         <div><h3 className="font-bold text-purple-900 text-sm mb-1">深度细分释义</h3><p className="text-xs text-purple-700/70 mb-2">炸开逗号/分号/序号</p></div>
                                         <button onClick={deepSplitMeanings} className="w-full py-2 bg-white text-purple-600 border border-purple-200 rounded-lg font-bold text-xs shadow-sm hover:bg-purple-100 transition">开始拆分</button>
+                                    </div>
+                                    {/* --- 🔥 新增代码：大纲导入入口 --- */}
+                                    <div className="p-4 bg-cyan-50 border border-cyan-100 rounded-2xl shadow-sm flex flex-col justify-between">
+                                        <div>
+                                            <h3 className="font-bold text-cyan-900 text-sm mb-1">考研大纲导入</h3>
+                                            <p className="text-xs text-cyan-700/70 mb-2">2026 最新版 (5500词)</p>
+                                        </div>
+                                        <button onClick={fetchSyllabus} disabled={isFetching} className="w-full py-2 bg-white text-cyan-600 border border-cyan-200 rounded-lg font-bold text-xs shadow-sm hover:bg-cyan-100 transition flex items-center justify-center">
+                                            {isFetching ? "下载中..." : "一键导入"}
+                                        </button>
                                     </div>
                                 </div>
 
