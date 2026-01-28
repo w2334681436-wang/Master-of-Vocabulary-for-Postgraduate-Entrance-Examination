@@ -1971,17 +1971,15 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
             const [aiInput, setAiInput] = useState('');
             const [isFetching, setIsFetching] = useState(false);
             const [fetchProgress, setFetchProgress] = useState({ current: 0, total: 0, success: 0, fail: 0 });
-          // --- 🛠️ 修复版：考研大纲一键导入 (增强兼容性) ---
+         // --- 🛠️ 终极修复版：智能清洗 + 多源适配 ---
             const fetchSyllabus = async () => {
-                if(!confirm("即将下载最新版考研大纲词汇，确定吗？")) return;
+                if(!confirm("即将下载并智能清洗考研大纲词汇，确定吗？")) return;
                 
                 setIsFetching(true);
-                // 备用源：如果主源失败，自动尝试备用源
+                // 调整顺序：优先使用结构更稳定、质量更高的 ma6254 经典源，它包含了绝大多数考研核心词
                 const SOURCES = [
-                    // 源1: exam-data (最新，结构可能复杂)
-                    "https://cdn.jsdelivr.net/gh/exam-data/NETEMVocabulary@master/netem_full_list.json",
-                    // 源2: ma6254 (经典，结构稳定)
-                    "https://cdn.jsdelivr.net/gh/ma6254/Kaoyan-English-Vocab@master/Kaoyan.json"
+                    "https://cdn.jsdelivr.net/gh/ma6254/Kaoyan-English-Vocab@master/Kaoyan.json",
+                    "https://cdn.jsdelivr.net/gh/exam-data/NETEMVocabulary@master/netem_full_list.json"
                 ];
 
                 try {
@@ -1990,43 +1988,36 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     let rawData = null;
                     let usedSource = "";
 
-                    // 1. 尝试轮询下载
+                    // 1. 轮询下载数据源
                     for (const url of SOURCES) {
                         try {
                             const res = await fetch(url);
                             if (res.ok) {
                                 rawData = await res.json();
                                 usedSource = url;
+                                console.log("成功加载源:", url);
                                 break; 
                             }
                         } catch (e) { console.warn("源连接失败:", url); }
                     }
 
-                    if (!rawData) throw new Error("所有词库源均无法连接，请检查网络或稍后再试。");
-                    console.log("📥 下载成功，数据类型:", typeof rawData, rawData); // 方便调试
+                    if (!rawData) throw new Error("无法连接到词库服务器，请检查网络或稍后再试。");
 
-                    // 2. 🔥 核心修复：智能格式标准化
+                    // 2. 数据标准化（转为数组）
                     let standardList = [];
-                    
                     if (Array.isArray(rawData)) {
-                        // 情况A: 直接是数组 (最理想)
                         standardList = rawData;
                     } else if (rawData && Array.isArray(rawData.data)) {
-                        // 情况B: 包了一层 { data: [...] }
                         standardList = rawData.data;
                     } else if (rawData && typeof rawData === 'object') {
-                        // 情况C: 字典对象 { "abandon": {...}, "abide": {...} }
-                        // 我们把它转为数组
                         standardList = Object.keys(rawData).map(key => {
                             const val = rawData[key];
-                            // 如果值是对象，就合并；如果是字符串，就作为释义
                             return typeof val === 'object' ? { word: key, ...val } : { word: key, def: val };
                         });
                     }
 
-                    if (standardList.length === 0) throw new Error("无法识别词库格式，请截图控制台日志反馈。");
+                    if (standardList.length === 0) throw new Error("词库格式无法识别");
 
-                    // 3. 开始导入
                     const targetCat = 'zero'; 
                     const batchId = `syllabus-${new Date().getFullYear()}`;
                     
@@ -2034,7 +2025,7 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     try {
                         const metaStr = localStorage.getItem('kaoyan_group_meta');
                         const meta = metaStr ? JSON.parse(metaStr) : {};
-                        meta[batchId] = { name: "考研大纲 5500 词", desc: "自动导入的最新大纲词汇" };
+                        meta[batchId] = { name: "考研大纲核心词", desc: "自动导入并清洗的标准大纲词汇" };
                         localStorage.setItem('kaoyan_group_meta', JSON.stringify(meta));
                     } catch(e) {}
 
@@ -2042,30 +2033,53 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
                     let addedCount = 0;
                     
                     standardList.forEach((item, idx) => {
-                        // 兼容不同字段名 (word/headWord, trans/def/definition)
-                        const w = item.word || item.headWord || item.key;
-                        if (!w) return;
+                        // 1. 智能匹配单词字段 (兼容 word, wordName, headWord, key)
+                        const w = item.word || item.wordName || item.headWord || item.key || item.text;
+                        
+                        // 过滤掉非单词内容（如 undefined 或纯数字）
+                        if (!w || typeof w !== 'string' || w.length < 2 || /^\d+$/.test(w)) return;
 
                         // 查重
                         if (currentWords.some(existing => existing.word.toLowerCase() === w.toLowerCase())) return;
 
-                        // 解析释义 (兼容 数组string, 单个string, 对象)
+                        // 2. 🔥 智能清洗释义 (解决 [object Object] 问题)
                         let defText = "";
-                        if (Array.isArray(item.trans)) defText = item.trans.join("; ");
-                        else if (typeof item.trans === 'string') defText = item.trans;
-                        else if (typeof item.def === 'string') defText = item.def;
-                        else if (typeof item.definition === 'string') defText = item.definition;
-                        
-                        // 如果连释义都找不到，就只存单词，后续靠AI补全
+                        // 获取可能的释义字段
+                        const transData = item.trans || item.translation || item.def || item.definition || item.meanings;
+
+                        if (Array.isArray(transData)) {
+                            // 如果是数组，遍历处理每一项
+                            defText = transData.map(t => {
+                                if (typeof t === 'string') return t; // 如果本身是字符串，直接用
+                                if (typeof t === 'object' && t !== null) {
+                                    // 如果是对象，提取常见字段：pos(词性), tranCn/chn(中文)
+                                    const pos = t.pos || t.type || '';
+                                    const mean = t.tranCn || t.chn || t.def || t.text || t.name || '';
+                                    // 拼接成 "n. 书" 的格式
+                                    return pos ? `${pos}. ${mean}` : mean;
+                                }
+                                return "";
+                            }).filter(s => s && s.trim()).join("; "); // 过滤空值并用分号连接
+                        } else if (typeof transData === 'string') {
+                            defText = transData;
+                        } else if (typeof transData === 'object' && transData !== null) {
+                            // 如果是大对象 { n: "...", v: "..." }
+                            defText = Object.entries(transData).map(([k, v]) => `${k}. ${v}`).join("; ");
+                        }
+
+                        // 如果清洗后还是空的，给个默认提示
+                        if (!defText) defText = "暂无释义 (请使用AI速查补全)";
+
+                        // 构造符合软件格式的数据
                         const parsedMeanings = [{
-                            pos: "mix.",
-                            def: defText || "暂无释义 (请使用AI速查补全)",
+                            pos: "mix.", // 混合词性，后续可用修复功能细分
+                            def: defText,
                             sentence: "",
                             isMastered: false
                         }];
 
                         currentWords.push({
-                            id: `syll-${Date.now()}-${idx}`, // 唯一ID防止冲突
+                            id: `syll-${Date.now()}-${idx}`, 
                             word: w,
                             phonetic: item.phonetic || "", 
                             category: targetCat,
@@ -2078,11 +2092,11 @@ const StudySession = ({ words, setWords, sessionConfig, onExit, config, setChatS
 
                     setWords(currentWords);
                     localStorage.setItem('kaoyan_vocab_list', JSON.stringify(currentWords));
-                    alert(`✅ 导入成功！\n\n数据源：${usedSource.includes('exam-data') ? '最新版 (v7.1)' : '经典版'}\n新增单词：${addedCount} 个\n\n💡 建议：导入后请点击 [数据中心] -> [AI 速查] 来自动补全音标和详细释义。`);
+                    alert(`✅ 完美修复！\n\n已成功清洗并导入 ${addedCount} 个核心单词。\n\n现在的释义应该是清晰的中文了。`);
 
                 } catch (e) {
                     console.error(e);
-                    alert("导入失败: " + e.message);
+                    alert("导入中断: " + e.message);
                 } finally {
                     setIsFetching(false);
                 }
