@@ -1,2 +1,16 @@
-# Master-of-Vocabulary-for-Postgraduate-Entrance-Examination
-转为自定义考研背单词而生
+# 词斩
+
+面向考研易错词的离线优先 PWA。应用内置用户提供的 1800 词静态词库，运行时不调用任何 AI 或第三方 API。
+
+## 功能
+
+- 识义、主动回忆、语境、拼写、易混辨析五维训练
+- 当天错误自动重新插入，长期复习到期调度
+- 掌握状态、答题速度、遗忘与复活记录
+- 今日歼灭、5 分钟弱点、专项测试、Boss Rush
+- IndexedDB 本地持久化，JSON 进度导入导出
+- Service Worker 离线缓存，可由 Chrome 安装
+
+## 部署
+
+仓库根目录即为静态站点，可直接导入 Vercel，无需构建命令。
