@@ -1,4 +1,4 @@
-const CACHE = "cizhan-static-v2";
+const CACHE = "cizhan-static-v4";
 const CORE = [
   "./",
   "./index.html",
@@ -6,6 +6,19 @@ const CORE = [
   "./app.js",
   "./data/words.js",
   "./data/adventure.js",
+  "./data/adventure-world-parts/arc-01.js",
+  "./data/adventure-world-parts/arc-02.js",
+  "./data/adventure-world-parts/arc-03.js",
+  "./data/adventure-world-parts/arc-04.js",
+  "./data/adventure-world-parts/arc-05.js",
+  "./data/adventure-world-parts/arc-06.js",
+  "./data/adventure-world-parts/arc-07.js",
+  "./data/adventure-world-parts/arc-08.js",
+  "./data/adventure-world-parts/arc-09.js",
+  "./data/adventure-world-parts/arc-10.js",
+  "./data/adventure-world-parts/arc-11.js",
+  "./data/adventure-world-parts/arc-12.js",
+  "./data/adventure-world.js",
   "./manifest.webmanifest",
   "./icons/icon-64.png",
   "./icons/icon-192.png",
