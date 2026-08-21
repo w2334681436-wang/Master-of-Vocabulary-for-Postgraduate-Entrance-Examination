@@ -7,7 +7,7 @@
   "start_url": "/",
   "scope": "/",
   "display": "fullscreen",
-  "display_override": ["fullscreen", "standalone"],
+  "display_override": ["fullscreen"],
   "orientation": "any",
   "background_color": "#f5f2ea",
   "theme_color": "#f5f2ea",
@@ -17,12 +17,6 @@
       "name": "今日歼灭",
       "short_name": "今日",
       "url": "./?page=today",
-      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
-    },
-    {
-      "name": "剧情冒险",
-      "short_name": "冒险",
-      "url": "./?page=adventure",
       "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ],
