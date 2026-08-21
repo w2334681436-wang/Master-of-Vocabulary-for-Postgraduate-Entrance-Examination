@@ -1073,7 +1073,7 @@
         ? `<form class="type-answer" data-role="answer-form"><input name="answer" placeholder="输入完整英文" autocapitalize="off" autocomplete="off" spellcheck="false" /><button class="primary-button" type="submit">确认</button></form>`
         : question.type === "recognition" && !session.optionRevealed
           ? `<div class="recall-gate"><button class="secondary-button" data-action="reveal-options">想好了 · 查看选项</button><button class="unknown-ready" data-action="answer-option" data-value="__UNKNOWN__">不认识</button></div>`
-        : `<div class="options">${question.options.map((option, index) => `<button class="option-button" data-action="answer-option" data-value="${escapeHtml(option)}"><span class="option-key">${index + 1}</span><span>${escapeHtml(option)}</span></button>`).join("")}<button class="option-button unknown-option" data-action="answer-option" data-value="__UNKNOWN__"><span class="option-key">0</span><span>确实不认识</span></button></div>`;
+        : `<div class="options">${question.options.map((option, index) => `<button class="option-button ${question.type === "recognition" ? "" : "word-option"}" data-action="answer-option" data-value="${escapeHtml(option)}"><span class="option-key">${index + 1}</span><span>${escapeHtml(option)}</span></button>`).join("")}<button class="option-button unknown-option" data-action="answer-option" data-value="__UNKNOWN__"><span class="option-key">0</span><span>确实不认识</span></button></div>`;
     const visiblePrompt = question.type === "recognition" && !session.optionRevealed
       ? "先在脑中说出它的核心义，再查看选项"
       : question.prompt;
