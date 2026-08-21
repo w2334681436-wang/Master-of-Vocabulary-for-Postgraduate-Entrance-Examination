@@ -80,6 +80,7 @@
     library: { search: "", filter: "all", page: 1 },
     session: null,
     pausedSession: null,
+    mainlineSession: null,
     detailId: null,
     toast: "",
     ready: false,
@@ -146,8 +147,19 @@
       .replace(/\s+/g, " ");
   }
 
+  function memoryHookRecord(word) {
+    const hook = MEMORY_HOOKS[word.id];
+    if (hook && typeof hook === "object") return hook;
+    if (typeof hook === "string") return { kind: "专属记忆", text: hook };
+    return { kind: "整词场景", text: word.memory || `用 ${word.word} 的完整词形绑定“${word.core}”，不做无依据拆分。` };
+  }
+
   function memoryHook(word) {
-    return MEMORY_HOOKS[word.id] || word.memory || `把 ${word.word} 的完整词形绑定到“${word.core}”。`;
+    return memoryHookRecord(word).text;
+  }
+
+  function memoryHookKind(word) {
+    return memoryHookRecord(word).kind;
   }
 
   function emptyEvidence() {
@@ -308,15 +320,27 @@
     state.settings.autoAudio = true;
     const profiles = metaRows.find((item) => item.key === "profiles");
     state.profiles = new Map(Array.isArray(profiles?.value) ? profiles.value : []);
+    const validSession = (session) => session && Array.isArray(session.questions)
+      && session.questions.every((question) => WORD_BY_ID.has(question.wordId));
+    const savedMainline = metaRows.find((item) => item.key === "mainlineSession")?.value;
+    if (validSession(savedMainline) && !savedMainline.finished) {
+      savedMainline.index = clamp(Number(savedMainline.index) || 0, 0, Math.max(0, savedMainline.questions.length - 1));
+      savedMainline.originalTotal = new Set(savedMainline.questions.map((question) => question.wordId)).size;
+      savedMainline.questionStartedAt = Date.now();
+      state.mainlineSession = savedMainline;
+    }
     const activeSession = metaRows.find((item) => item.key === "activeSession")?.value;
-    if (activeSession?.session && Array.isArray(activeSession.session.questions)
-      && activeSession.session.questions.every((question) => WORD_BY_ID.has(question.wordId))) {
+    if (validSession(activeSession?.session)) {
       const restored = activeSession.session;
       restored.index = clamp(Number(restored.index) || 0, 0, Math.max(0, restored.questions.length - 1));
       restored.originalTotal = new Set(restored.questions.map((question) => question.wordId)).size;
       restored.questionStartedAt = Date.now();
       if (activeSession.open) state.session = restored;
       else state.pausedSession = restored;
+      if (!state.mainlineSession && (restored.mode === "daily-core" || restored.mode === "daily-new") && !restored.finished) {
+        state.mainlineSession = restored;
+        put("meta", { key: "mainlineSession", value: restored }).catch(() => {});
+      }
     }
     state.events = eventRows.sort((a, b) => a.ts - b.ts).slice(-MAX_EVENTS);
     state.progress.forEach((progress, id) => {
@@ -546,15 +570,27 @@
     return "单词训练";
   }
 
-  function saveSession(open = true) {
-    const session = state.session || state.pausedSession;
-    return put("meta", { key: "activeSession", value: session ? { open, session } : null }).catch(() => {});
+  function isMainlineSession(session) {
+    return session?.mode === "daily-core" || session?.mode === "daily-new";
   }
 
-  function resumeSession() {
-    if (!state.pausedSession || state.pausedSession.finished) return false;
-    state.session = state.pausedSession;
-    state.pausedSession = null;
+  function saveSession(open = true) {
+    const session = state.session || state.pausedSession;
+    const writes = [put("meta", { key: "activeSession", value: session ? { open, session } : null })];
+    if (isMainlineSession(session)) {
+      state.mainlineSession = session.finished ? null : session;
+      writes.push(put("meta", { key: "mainlineSession", value: state.mainlineSession }));
+    }
+    return Promise.all(writes).catch(() => {});
+  }
+
+  function resumeSession(requestedMode = "") {
+    const resumeMainline = (requestedMode === "daily-core" || requestedMode === "daily-new")
+      && state.mainlineSession && !state.mainlineSession.finished;
+    const target = resumeMainline ? state.mainlineSession : state.pausedSession;
+    if (!target || target.finished) return false;
+    state.session = target;
+    if (!resumeMainline) state.pausedSession = null;
     state.session.questionStartedAt = Date.now();
     saveSession(true);
     render();
@@ -563,6 +599,10 @@
   }
 
   function startSession(mode, forcedWordId = null) {
+    if ((mode === "daily-core" || mode === "daily-new") && state.mainlineSession && !state.mainlineSession.finished) {
+      resumeSession(mode);
+      return;
+    }
     const todayRemaining = Math.max(0, state.settings.dailyNew - todayIntroducedCount());
     const reviewedToday = new Set(todayEventIds());
     const pendingReviews = dueWords().filter((word) => !reviewedToday.has(word.id)).length;
@@ -627,6 +667,7 @@
       finished: false,
     };
     state.pausedSession = null;
+    if (isMainlineSession(state.session)) state.mainlineSession = state.session;
     saveSession(true);
     render();
     autoPlayCurrentWord();
@@ -719,12 +760,21 @@
       if (!window.confirm("结束本次训练？当前作答记录已经保存。")) return;
     }
     stopAudio();
+    const closingMainline = isMainlineSession(state.session);
     if (!force && !state.session.finished) {
       state.pausedSession = state.session;
+      if (closingMainline) {
+        state.mainlineSession = state.session;
+        put("meta", { key: "mainlineSession", value: state.mainlineSession }).catch(() => {});
+      }
       saveSession(false);
     } else {
       state.pausedSession = null;
       put("meta", { key: "activeSession", value: null }).catch(() => {});
+      if (closingMainline) {
+        state.mainlineSession = null;
+        put("meta", { key: "mainlineSession", value: null }).catch(() => {});
+      }
     }
     state.session = null;
     render();
@@ -821,11 +871,14 @@
       { label: "今日新词", meta: `${introducedToday} / ${state.settings.dailyNew} 词`, done: todayRemaining === 0 },
       { label: "错词回查", meta: "答错后自动插回本轮，不用另开任务", done: mainlineDone },
     ];
-    const pausedRemaining = state.pausedSession
-      ? Math.max(1, state.pausedSession.questions.length - state.pausedSession.index)
+    const resumableSession = state.mainlineSession && !state.mainlineSession.finished
+      ? state.mainlineSession
+      : state.pausedSession;
+    const pausedRemaining = resumableSession
+      ? Math.max(1, resumableSession.questions.length - resumableSession.index)
       : 0;
-    const action = state.pausedSession
-      ? { action: "resume-session", mode: state.pausedSession.mode, label: `继续上次学习 · 剩 ${pausedRemaining} 题` }
+    const action = resumableSession
+      ? { action: "resume-session", mode: resumableSession.mode, label: `${isMainlineSession(resumableSession) ? "继续每日主线" : "继续上次学习"} · 剩 ${pausedRemaining} 题` }
       : mainlineDone
         ? { action: "start-session", mode: "today", label: "今日主线完成 · 继续加练" }
         : { action: "start-session", mode: "daily-core", label: `一键开始今日主线 · ${coreCount} 词` };
@@ -1079,8 +1132,8 @@
       : question.prompt;
     return `<div class="study-overlay"><div class="study-stage">
       <div class="study-head"><button class="icon-button" data-action="close-session" aria-label="结束训练">${icon("back", 19)}</button><div class="study-head-center"><div class="study-title">${escapeHtml(session.title)}</div><div class="study-count">${question.isRetry || /-r\d+$/.test(question.id) ? "错词回查 · " : ""}${originalReached} / ${originalTotal} 词</div><div class="study-progress"><span style="width:${progress}%"></span></div></div><button class="icon-button" data-action="speak" data-word="${escapeHtml(word.word)}" aria-label="朗读" ${question.type !== "recognition" && !session.answered ? "disabled" : ""}>${icon("volume", 19)}</button></div>
-      <div class="question-wrap"><article class="question-card ${session.answered ? `answered ${feedback.correct ? "good" : "bad"}` : ""}"><span class="question-type">${TYPE_LABELS[question.type]}</span><div class="question-word">${escapeHtml(session.answered ? word.word : question.display)}</div><div class="question-phonetic">${escapeHtml(session.answered ? word.phonetic : question.phonetic)}</div>${session.answered ? `<div class="answer-reveal"><strong>${escapeHtml(word.core)}</strong><span>${escapeHtml(word.meaning)}</span>${feedback.correct ? "" : `<div class="memory-hook"><small>看到词形这样记</small><p>${escapeHtml(memoryHook(word))}</p></div>`}</div>` : `<p class="question-prompt">${escapeHtml(visiblePrompt)}</p>`}</article></div>
-      <div>${answerArea}</div>
+      <div class="question-wrap"><article class="question-card ${session.answered ? `answered ${feedback.correct ? "good" : "bad"}` : ""}"><span class="question-type">${TYPE_LABELS[question.type]}</span><div class="question-word">${escapeHtml(session.answered ? word.word : question.display)}</div><div class="question-phonetic">${escapeHtml(session.answered ? word.phonetic : question.phonetic)}</div>${session.answered ? `<div class="answer-reveal"><strong>${escapeHtml(word.core)}</strong><span>${escapeHtml(word.meaning)}</span>${feedback.correct ? "" : `<div class="memory-hook"><small>${escapeHtml(memoryHookKind(word))}</small><p>${escapeHtml(memoryHook(word))}</p></div>`}</div>` : `<p class="question-prompt">${escapeHtml(visiblePrompt)}</p>`}</article></div>
+      <div class="answer-area">${answerArea}</div>
     </div></div>`;
   }
 
@@ -1099,7 +1152,7 @@
       <div class="modal-head"><div><div class="word-index">NO. ${String(word.id).padStart(4, "0")} · ${STATUS_LABELS[progress.status]}</div><h2 class="detail-word">${escapeHtml(word.word)}</h2><div class="detail-phonetic">${escapeHtml(word.phonetic)}</div></div><button class="icon-button" data-action="close-detail" aria-label="关闭">${icon("close", 18)}</button></div>
       <div class="profile-switch"><button class="${profile === "reading" ? "active" : ""}" data-action="set-profile" data-profile="reading" data-id="${word.id}"><strong>阅读词</strong><span>看懂即可 · 免默写</span></button><button class="${profile === "writing" ? "active" : ""}" data-action="set-profile" data-profile="writing" data-id="${word.id}"><strong>写作词</strong><span>会用 · 会拼写</span></button></div>
       <div class="detail-core"><small>核心义</small><strong>${escapeHtml(word.core)}</strong></div>
-      <div class="detail-memory"><small>词形记忆</small><p>${escapeHtml(memoryHook(word))}</p></div>
+      <div class="detail-memory"><small>${escapeHtml(memoryHookKind(word))}</small><p>${escapeHtml(memoryHook(word))}</p></div>
       <div class="sense-list">${word.senses.map((sense) => `<div class="sense-item"><span class="sense-pos">${escapeHtml(sense.pos || "释义")}</span>${escapeHtml(sense.text)}</div>`).join("")}</div>
       ${confusionItems.length ? `<div class="detail-core confusion-core"><small>易混词</small><div class="confusion-list">${confusionItems.map((item) => `<span><strong>${escapeHtml(item.name)}</strong><em>${escapeHtml(item.core)}</em></span>`).join("")}</div></div>` : ""}
       <div class="fingerprint">${relevantTypes.map((type) => `<div class="fingerprint-item"><strong>${Math.round(evidenceScore(progress.evidence[type], type) * 100)}%</strong><span>${TYPE_SHORT[type]}</span></div>`).join("")}</div>
@@ -1168,9 +1221,11 @@
       state.profiles = new Map(Array.isArray(payload.profiles) ? payload.profiles : []);
       state.session = null;
       state.pausedSession = null;
+      state.mainlineSession = null;
       await put("meta", { key: "settings", value: state.settings });
       await put("meta", { key: "profiles", value: [...state.profiles.entries()] });
       await put("meta", { key: "activeSession", value: null });
+      await put("meta", { key: "mainlineSession", value: null });
       showToast("进度已恢复");
     } catch (error) {
       showToast("文件无法识别，请选择词斩备份");
@@ -1184,7 +1239,9 @@
     state.events = [];
     state.session = null;
     state.pausedSession = null;
+    state.mainlineSession = null;
     await put("meta", { key: "activeSession", value: null });
+    await put("meta", { key: "mainlineSession", value: null });
     render();
     showToast("学习进度已清空");
   }
@@ -1215,7 +1272,7 @@
       startSession(target.dataset.mode || "today", Number(target.dataset.id) || null);
     } else if (action === "resume-session") {
       state.detailId = null;
-      resumeSession();
+      resumeSession(target.dataset.mode || "");
     } else if (action === "set-profile") {
       const id = Number(target.dataset.id);
       const word = WORD_BY_ID.get(id);

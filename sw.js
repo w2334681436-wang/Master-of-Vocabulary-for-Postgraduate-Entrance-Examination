@@ -1,4 +1,4 @@
-const CACHE = "cizhan-static-v6";
+const CACHE = "cizhan-static-v7";
 const CORE = [
   "./",
   "./index.html",
