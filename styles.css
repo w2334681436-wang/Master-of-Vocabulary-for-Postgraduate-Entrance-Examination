@@ -859,6 +859,13 @@ p {
   box-shadow: 0 10px 26px rgba(16, 36, 61, 0.06);
 }
 
+.weak-card:disabled {
+  opacity: 0.48;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+
 .weak-icon,
 .test-icon {
   width: 39px;
@@ -1128,6 +1135,56 @@ p {
   align-items: center;
 }
 
+.data-insight-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  gap: 14px;
+}
+
+.health-numbers {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.health-numbers > div {
+  padding: 11px 7px;
+  border-radius: 11px;
+  background: var(--paper);
+  text-align: center;
+}
+
+.health-numbers strong,
+.health-numbers span { display: block; }
+.health-numbers strong { font-size: 18px; }
+.health-numbers span { margin-top: 3px; color: var(--muted); font-size: 9px; }
+.memory-health > p { margin: 13px 0 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+
+.risk-word-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.risk-word-list button {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 7px;
+  background: rgba(255, 255, 255, 0.44);
+  text-align: left;
+  cursor: pointer;
+}
+
+.risk-word-list strong { overflow: hidden; font-family: var(--word-serif); font-size: 13px; text-overflow: ellipsis; }
+.risk-word-list span { grid-column: 1 / -1; overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.risk-word-list em { color: var(--red-deep); font-size: 9px; font-style: normal; font-weight: 800; }
+.empty-state.compact { min-height: 70px; grid-column: 1 / -1; }
+
 .settings-inline {
   margin-left: auto;
   display: flex;
@@ -1287,6 +1344,14 @@ p {
   letter-spacing: -0.04em;
 }
 
+.question-word.context-label {
+  margin-bottom: 10px;
+  font-family: inherit;
+  font-size: clamp(18px, 3vw, 25px);
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
 .question-phonetic {
   min-height: 23px;
   color: var(--muted);
@@ -1322,6 +1387,19 @@ p {
   font-size: clamp(14px, 2vw, 18px);
   font-weight: 680;
   line-height: 1.5;
+}
+
+.answer-evidence,
+.answer-example {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: clamp(10px, 1.4vw, 12px);
+  font-weight: 570;
+  line-height: 1.45;
+}
+
+.answer-example {
+  color: var(--ink-2);
 }
 
 .memory-hook {
@@ -1539,6 +1617,13 @@ p {
   font-size: 10px;
 }
 
+.done-note {
+  margin: -10px 0 20px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .modal-backdrop {
   position: fixed;
   z-index: 80;
@@ -1720,6 +1805,35 @@ p {
   font-weight: 850;
 }
 
+.detail-usage {
+  margin-top: 10px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.detail-usage > small {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.detail-usage p {
+  margin: 4px 0;
+  color: var(--ink-2);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.detail-usage b {
+  margin-right: 7px;
+  color: var(--red-deep);
+  font-size: 9px;
+}
+
 .fingerprint {
   margin-top: 18px;
   display: grid;
@@ -1743,6 +1857,26 @@ p {
   color: var(--muted);
   font-size: 9px;
 }
+
+.schedule-evidence {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.schedule-evidence > span {
+  min-width: 0;
+  padding: 9px 7px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.schedule-evidence small,
+.schedule-evidence strong { display: block; }
+.schedule-evidence small { color: var(--muted); font-size: 8px; }
+.schedule-evidence strong { margin-top: 3px; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 
 .modal-actions {
   margin-top: 20px;
@@ -2064,6 +2198,19 @@ p {
     grid-column: 1;
   }
 
+  .data-insight-grid {
+    grid-column: 1;
+    grid-template-columns: 1fr;
+  }
+
+  .health-numbers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .risk-word-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .seven-day-card {
     grid-column: 1;
   }
@@ -2127,6 +2274,10 @@ p {
     font-size: clamp(36px, 13vw, 54px);
   }
 
+  .question-word.context-label {
+    font-size: 18px;
+  }
+
   .options {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 7px;
@@ -2151,6 +2302,10 @@ p {
 
   .fingerprint {
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  .schedule-evidence {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 

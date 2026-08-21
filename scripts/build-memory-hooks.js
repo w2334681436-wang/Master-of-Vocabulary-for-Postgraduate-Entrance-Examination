@@ -5,7 +5,9 @@ const vm = require("node:vm");
 const projectRoot = path.resolve(__dirname, "..");
 const context = { window: {} };
 vm.runInNewContext(fs.readFileSync(path.join(projectRoot, "data/words.js"), "utf8"), context);
+vm.runInNewContext(fs.readFileSync(path.join(projectRoot, "data/learning-content.js"), "utf8"), context);
 const words = context.window.VOCABULARY;
+const learningContent = context.window.WORD_LEARNING_CONTENT;
 const evidence = require("./memory-evidence.json");
 const wordByName = new Map(words.map((word) => [word.word.toLowerCase(), word]));
 
@@ -378,20 +380,107 @@ function familyHook(word, record) {
   return ["同族挂钩", `${word.word} 可与 ${related.word}（${related.core}）放在同一词族里对照；保留共同词形，同时把 ${word.word} 单独落到“${word.core}”。`];
 }
 
+const definitionStopwords = new Set([
+  "about", "after", "again", "against", "also", "among", "another", "being", "between",
+  "cause", "characterized", "concerned", "especially", "from", "having", "into", "made",
+  "more", "most", "often", "other", "relating", "something", "state", "than", "that",
+  "their", "them", "these", "thing", "those", "through", "used", "using", "very", "when",
+  "where", "which", "while", "with", "without",
+]);
+
+function shorten(value, max = 126) {
+  const compact = String(value || "").replace(/\s+/g, " ").trim();
+  if (compact.length <= max) return compact;
+  const cut = compact.slice(0, max - 1);
+  return `${cut.replace(/\s+\S*$/, "")}…`;
+}
+
+function exampleWithWord(word, content) {
+  const escaped = word.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const exact = new RegExp(`\\b${escaped}\\b`, "i");
+  return (content.examples || [])
+    .filter((example) => exact.test(example))
+    .sort((a, b) => a.length - b.length)[0] || "";
+}
+
+function definitionKeyword(definition, word) {
+  const target = word.word.toLowerCase();
+  return (String(definition).toLowerCase().match(/[a-z][a-z-]{3,}/g) || [])
+    .filter((token) => token !== target && !definitionStopwords.has(token))
+    .sort((a, b) => b.length - a.length)[0] || "definition";
+}
+
+function shapeCue(word) {
+  const lower = word.word.toLowerCase();
+  const doubled = lower.match(/([a-z])\1/);
+  if (doubled) return `词形再钉住双写 ${doubled[0]}`;
+  const rare = lower.match(/(eigh|ough|augh|tion|sion|tch|dge|ght|ph|rh|wr|kn|mn|ps|qu|eau)/);
+  if (rare) return `词形再钉住辨识块 ${rare[0]}`;
+  if (lower.length >= 8) return `词形用外框 ${lower.slice(0, 3)}…${lower.slice(-3)} 定位`;
+  return `回忆时保留完整短词形 ${lower}`;
+}
+
+function usageHook(word) {
+  const content = learningContent[word.id] || { definition: [], examples: [] };
+  const example = exampleWithWord(word, content);
+  const cue = shapeCue(word);
+  const variant = word.id % 4;
+  if (example) {
+    const quote = shorten(example);
+    const templates = {
+      n: [
+        `真实句“${quote}”给 ${word.word} 留的是名词位；把这个位置换成“${word.core}”仍说得通。先复原句中事物，再认词；${cue}。`,
+        `把 ${word.word} 固定在真实用法“${quote}”里：它在句中指向“${word.core}”这一事物。下次先找名词位置，再由场景提取词义；${cue}。`,
+        `不要硬编词根：在“${quote}”中直接圈出 ${word.word}，旁注“${word.core}”。句位、场景和词形三者一起回放；${cue}。`,
+        `用真实语境“${quote}”做记忆证据：其中 ${word.word} 承担名词成分，核心就是“${word.core}”。闭眼复述句意后再看词；${cue}。`,
+      ],
+      v: [
+        `在真实句“${quote}”里，${word.word} 是正在发生的动作；把动作画面直接标成“${word.core}”。以后先演动作，再叫出这个词；${cue}。`,
+        `把 ${word.word} 放回“${quote}”：句中主语做的正是“${word.core}”。先抓施事者与动作，再提取词形；${cue}。`,
+        `真实用法“${quote}”比拆假词根可靠：定位其中的动词 ${word.word}，用“${word.core}”复述整句；${cue}。`,
+        `记一帧动作证据：“${quote}”。${word.word} 在这里推动句子发生，核心动作是“${word.core}”；${cue}。`,
+      ],
+      adj: [
+        `真实句“${quote}”中，${word.word} 正在给对象贴上“${word.core}”这一特征。先想被描述的对象，再恢复形容词；${cue}。`,
+        `把 ${word.word} 记成“${quote}”里的属性标签：它说明对象“${word.core}”。看到相同描述位就触发这个词；${cue}。`,
+        `在“${quote}”里圈出被修饰对象，再把 ${word.word} 写成中文侧注“${word.core}”。对象＋特征一起记；${cue}。`,
+        `用真实语境“${quote}”校准词义：${word.word} 不是孤立标签，而是在说明“${word.core}”的状态；${cue}。`,
+      ],
+      adv: [
+        `真实句“${quote}”中，${word.word} 修饰动作的方式或程度，落点是“${word.core}”。先复述动作怎样发生，再认词；${cue}。`,
+        `把 ${word.word} 锁在“${quote}”的修饰位：它回答“怎样/到什么程度”，核心是“${word.core}”；${cue}。`,
+        `在真实用法“${quote}”里删掉 ${word.word} 再补回：缺少的正是“${word.core}”这一语气或方式；${cue}。`,
+        `用句子证据“${quote}”记忆：${word.word} 改变整句的方式或程度，中文锚点是“${word.core}”；${cue}。`,
+      ],
+    };
+    const group = templates[word.pos] || templates.n;
+    return { kind: "真实语境", text: group[variant], basis: "usage" };
+  }
+
+  const definition = shorten(content.definition?.[0] || `${word.core}`);
+  const keyword = definitionKeyword(definition, word);
+  const templates = [
+    `Open English WordNet 把 ${word.word} 定义为“${definition}”。先抓定义中的 ${keyword}，再落到中文核心“${word.core}”；${cue}。`,
+    `${word.word} 暂无合适的例句，不编故事。用可核验定义“${definition}”做锚点，把 ${keyword} 与“${word.core}”成对回忆；${cue}。`,
+    `记定义而不乱拆词：${word.word} = “${definition}”。辨识时先提取关键词 ${keyword}，确认核心义“${word.core}”；${cue}。`,
+    `用英文定义“${definition}”反向定位 ${word.word}：线索词 ${keyword} 指向“${word.core}”。说出中文后再完整看一遍词形；${cue}。`,
+  ];
+  return { kind: "释义锚点", text: templates[variant], basis: "definition" };
+}
+
 function buildHook(word) {
   if (manual[word.word]) return { kind: manual[word.word][0], text: manual[word.word][1], basis: "manual" };
   const record = evidence[word.word] || {};
-  const root = rootHook(word, record);
-  const history = historyHook(word, record);
   const family = familyHook(word, record);
   const confusion = confusionHook(word);
-  const selected = history || root || confusion || family || spellingHook(word);
-  const basis = history === selected ? "history" : root === selected ? "morpheme"
-    : family === selected ? "family" : confusion === selected ? "confusion" : "spelling";
-  return { kind: selected[0], text: selected[1], basis };
+  if (confusion) return { kind: confusion[0], text: confusion[1], basis: "confusion" };
+  if (family) return { kind: family[0], text: family[1], basis: "family" };
+  return usageHook(word);
 }
 
-if (!Array.isArray(words) || words.length !== 1800) throw new Error(`Expected 1800 words, received ${words?.length}`);
+if (!Array.isArray(words) || words.length !== 1800 || learningContent?.length !== 1801) {
+  throw new Error(`Expected 1800 words and learning records, received ${words?.length}/${learningContent?.length}`);
+}
 const hooks = [null, ...words.map(buildHook)];
 const banned = /把词形分成|三秒扫一遍|记住开头|整词只回忆|先抓住.+再按词性/;
 for (let index = 1; index < hooks.length; index += 1) {
@@ -404,6 +493,9 @@ const counts = hooks.slice(1).reduce((result, hook) => {
   result[hook.basis] = (result[hook.basis] || 0) + 1;
   return result;
 }, {});
-const output = `/* Generated from word-specific morphology, word history, families and spelling evidence. */\nwindow.WORD_MEMORY_HOOKS=${JSON.stringify(hooks)};\n`;
+if (hooks.some((hook) => hook?.basis === "history" || /这个词的早期用法|词义基本没走样|沿着“/.test(hook?.text || ""))) {
+  throw new Error("Unverifiable generic etymology survived generation");
+}
+const output = `/* Generated from reviewed word-specific hooks, authentic usage, definitions and confusion evidence. */\nwindow.WORD_MEMORY_HOOKS=${JSON.stringify(hooks)};\n`;
 fs.writeFileSync(path.join(projectRoot, "data/memory-hooks.js"), output);
 console.log(`Generated ${hooks.length - 1} word-specific hooks: ${JSON.stringify(counts)}`);

@@ -1,4 +1,5 @@
-const CACHE = "cizhan-static-v8";
+const CACHE = "cizhan-static-v9";
+const AUDIO_CACHE = "cizhan-pronunciation-v1";
 const CORE = [
   "./",
   "./index.html",
@@ -6,6 +7,7 @@ const CORE = [
   "./app.js",
   "./data/words.js",
   "./data/memory-hooks.js",
+  "./data/learning-content.js",
   "./manifest.webmanifest",
   "./icons/icon-64.png",
   "./icons/icon-192.png",
@@ -21,7 +23,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE && key !== AUDIO_CACHE).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
 });
@@ -29,6 +31,18 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const requestUrl = new URL(event.request.url);
+  if (requestUrl.hostname === "dict.youdao.com" && requestUrl.pathname.includes("dictvoice")) {
+    event.respondWith(
+      caches.open(AUDIO_CACHE).then(async (cache) => {
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+        const response = await fetch(event.request);
+        if (response.ok || response.type === "opaque") cache.put(event.request, response.clone());
+        return response;
+      }),
+    );
+    return;
+  }
   if (event.request.mode === "navigate") {
     event.respondWith(
       fetch(event.request)
