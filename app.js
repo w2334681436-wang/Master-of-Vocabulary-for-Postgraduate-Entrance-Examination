@@ -2,11 +2,13 @@
   "use strict";
 
   const WORDS = Array.isArray(window.VOCABULARY) ? window.VOCABULARY : [];
+  const ADVENTURE = window.CIZHAN_ADVENTURE || { arcs: [], episodes: [], chapters: [], chapterById: {}, nodeById: {}, wordPlan: () => ({}) };
   const WORD_BY_ID = new Map(WORDS.map((word) => [word.id, word]));
   const DB_NAME = "cizhan-vocabulary-v1";
   const DB_VERSION = 1;
   const DAY = 86_400_000;
   const HOUR = 3_600_000;
+  const MAX_EVENTS = 50_000;
   const TYPE_LABELS = {
     recognition: "阅读识义",
     recall: "主动回忆",
@@ -28,14 +30,44 @@
     spelling: 2,
     discrimination: 1,
   };
-  const TYPE_WEIGHTS = {
-    recognition: 0.16,
-    recall: 0.25,
-    context: 0.2,
-    spelling: 0.24,
-    discrimination: 0.15,
-  };
+  const TYPE_WEIGHTS = { recognition: 0.16, recall: 0.25, context: 0.2, spelling: 0.24, discrimination: 0.15 };
+  const READING_WEIGHTS = { recognition: 0.48, context: 0.4, discrimination: 0.12 };
+  const WRITING_WEIGHTS = { recognition: 0.12, recall: 0.27, context: 0.17, spelling: 0.31, discrimination: 0.13 };
+  const WRITING_WORDS = new Set(`
+    fluctuate municipal propagate duplicate intimate solemn catastrophe doctrine prevalent salient consensus criterion scrutiny
+    culminate dignity prosperous rigorous scenario appraisal denounce envisage turmoil strenuous depict alleviate quarantine
+    hypocrisy custody resemblance metropolitan imperative reassure metaphor convene reluctant robust rigid frustrate repel
+    protest concede coalition propaganda fracture strive absurd versatile volatile eminent facilitate coherent excerpt
+    temperament speculate obligation escalate nourish legacy ascertain audit solidarity discern adhere conspicuous prosecute
+    culprit accuse intrinsic overt furnish extravagant redundant omit contingent endorse negligible exempt resolute articulate
+    domestic capable stimulate elaborate allegiance cohesive rhetoric stereotype commodity perpetual integral discourse
+    eligible homogeneous discrepancy concise compassion assimilate rebellion augment symmetry portfolio retrospect summit
+    virtue indignation tangible correlate credential correspondent disposition empirical reciprocal preclude bolster recession
+    devise hierarchy amplify competent intelligible normalization hospitality demographic embark inaugurate parliament
+    exaggerate contagious conceive surge concession feasible implicit acquisition cumulative compel boundary spontaneous
+    vulnerable query optional anticipate perspective transient withhold aesthetic perceive enterprise candidate elicit deduce
+    assurance convention stipulate sustain contradict correspondence reliance deficit intervene external amend proposition
+    subordinate conversion cultivate tentative flaw conscientious dilemma insight manipulate fabricate extract proclaim
+    narrative deviate momentum memorandum designate irony manifest advisable complement transcend charter temporal civil
+    statute ambiguous conscious convey coordinate abide declare mediate definite dispose evoke evaluate exclude execute exploit
+    verbal underlying simulate impose monetary curriculum prudent casualty overlook substitute proposal thesis representative
+    simultaneous signify repression expenditure scheme illuminate viable essence ecology setback debate suppress synthesis
+    trait mentor appropriate assess assign substantial rectify coincide outlook comprise budget corporation critic orientation
+    probe inferior emergency equivalent valid exact guarantee testimony faculty predominant conspiracy equality examine
+    formal asset priority inevitable detail judge democratic legitimate liberal notable endeavor construct deteriorate
+    composition quantify consultant radical superficial commercial liability phenomenon applicable deliberate pursue remedy
+    persist induce specialize resist implement finite distinct secondary formulate sequence attach severe
+  `.trim().split(/\s+/));
   const DEFAULT_SETTINGS = { dailyNew: 20, sessionSize: 30, autoAudio: false };
+  const DEFAULT_ADVENTURE_STATE = {
+    chapterId: "chapter-1",
+    chapterNodes: {},
+    completed: [],
+    inventory: [],
+    seenNodes: [],
+    correct: 0,
+    wrong: 0,
+  };
   const STATUS_LABELS = {
     new: "完全不会",
     unstable: "不稳定",
@@ -46,14 +78,22 @@
   const root = document.getElementById("app");
   let database = null;
   let toastTimer = null;
+  let installPrompt = null;
 
   const state = {
     page: "today",
     progress: new Map(),
     events: [],
     settings: { ...DEFAULT_SETTINGS },
+    profiles: new Map(),
     library: { search: "", filter: "all", page: 1 },
     session: null,
+    adventure: { ...DEFAULT_ADVENTURE_STATE },
+    adventureOpen: false,
+    adventureOutcome: null,
+    adventureGlossId: null,
+    adventureFinished: null,
+    installAvailable: false,
     detailId: null,
     toast: "",
     ready: false,
@@ -61,6 +101,7 @@
 
   const ICONS = {
     today: '<path d="M4 5h16v15H4z"/><path d="M8 3v4M16 3v4M4 9h16"/>',
+    adventure: '<path d="M5 4h6a3 3 0 0 1 3 3v13a3 3 0 0 0-3-3H5z"/><path d="M19 4h-3a3 3 0 0 0-3 3v13a3 3 0 0 1 3-3h3z"/><path d="m16 9 2 2-2 2"/>',
     library: '<path d="M4 4h6v16H4zM14 4h6v16h-6z"/><path d="M7 8h0M17 8h0"/>',
     weak: '<path d="M12 3v9l5 3"/><circle cx="12" cy="12" r="9"/><path d="m17 6 2-2"/>',
     test: '<path d="M7 3h10v4H7z"/><path d="M5 5h14v16H5z"/><path d="m8 13 2 2 5-5"/>',
@@ -84,6 +125,9 @@
     upload: '<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 20h16"/>',
     trash: '<path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h0"/>',
+    map: '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/>',
+    bag: '<path d="M5 8h14l1 13H4z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
+    install: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 20h14"/>',
   };
 
   function icon(name, size = 20) {
@@ -140,6 +184,7 @@
       revived: false,
       stubborn: false,
       avgMs: 0,
+      story: { exposures: 0, hints: 0, correct: 0, wrong: 0, lastAt: 0, nodes: [] },
       evidence: {
         recognition: emptyEvidence(),
         recall: emptyEvidence(),
@@ -154,6 +199,41 @@
     return state.progress.get(id) || emptyProgress(id);
   }
 
+  function normalizeProgress(progress) {
+    const base = emptyProgress(progress.id);
+    return {
+      ...base,
+      ...progress,
+      story: { ...base.story, ...(progress.story || {}) },
+      evidence: Object.fromEntries(Object.keys(TYPE_WEIGHTS).map((type) => [
+        type,
+        { ...emptyEvidence(), ...(progress.evidence?.[type] || {}) },
+      ])),
+    };
+  }
+
+  function defaultWordProfile(word) {
+    return WRITING_WORDS.has(word.word) ? "writing" : "reading";
+  }
+
+  function wordProfile(word) {
+    return state.profiles.get(word.id) || defaultWordProfile(word);
+  }
+
+  function typesForWord(word) {
+    if (wordProfile(word) === "writing") {
+      return Object.keys(WRITING_WEIGHTS).filter((type) => type !== "discrimination" || word.confusions.length);
+    }
+    return ["recognition", "context", ...(word.confusions.length ? ["discrimination"] : [])];
+  }
+
+  function weightsForWord(word) {
+    const source = wordProfile(word) === "writing" ? WRITING_WEIGHTS : READING_WEIGHTS;
+    const allowed = typesForWord(word);
+    const total = allowed.reduce((sum, type) => sum + source[type], 0) || 1;
+    return Object.fromEntries(allowed.map((type) => [type, source[type] / total]));
+  }
+
   function evidenceScore(evidence, type) {
     const attempts = evidence.correct + evidence.wrong;
     if (!attempts) return 0;
@@ -163,12 +243,13 @@
     return accuracy * coverage * speed;
   }
 
-  function calculateMastery(progress) {
+  function calculateMastery(word, progress) {
+    const weights = weightsForWord(word);
     let base = 0;
     let testedTypes = 0;
-    Object.keys(TYPE_WEIGHTS).forEach((type) => {
+    Object.keys(weights).forEach((type) => {
       const score = evidenceScore(progress.evidence[type] || emptyEvidence(), type);
-      base += score * TYPE_WEIGHTS[type];
+      base += score * weights[type];
       if ((progress.evidence[type]?.correct || 0) + (progress.evidence[type]?.wrong || 0) > 0) testedTypes += 1;
     });
     const delayBonus = Math.min(0.12, progress.longPasses * 0.06);
@@ -176,9 +257,11 @@
     const mastery = Math.round(clamp((base + delayBonus - lapsePenalty) * 100, 0, 100));
     let status = "new";
     if (progress.exposures > 0) status = "unstable";
-    if (mastery >= 48 && testedTypes >= 3 && progress.streak >= 2) status = "learning";
+    const learningTypes = wordProfile(word) === "writing" ? Math.min(3, Object.keys(weights).length) : 2;
+    const masteredTypes = wordProfile(word) === "writing" ? Math.min(4, Object.keys(weights).length) : 2;
+    if (mastery >= 48 && testedTypes >= learningTypes && progress.streak >= 2) status = "learning";
     const survived72Hours = progress.firstSeen && Date.now() - progress.firstSeen >= 72 * HOUR;
-    if (mastery >= 82 && testedTypes >= 4 && progress.longPasses >= 2 && survived72Hours) status = "mastered";
+    if (mastery >= 82 && testedTypes >= masteredTypes && progress.longPasses >= 2 && survived72Hours) status = "mastered";
     return { mastery, status };
   }
 
@@ -233,10 +316,23 @@
       getAll("meta"),
       getAll("events"),
     ]);
-    state.progress = new Map(progressRows.map((item) => [item.id, item]));
+    state.progress = new Map(progressRows.map((item) => [item.id, normalizeProgress(item)]));
     const settings = metaRows.find((item) => item.key === "settings");
     if (settings?.value) state.settings = { ...DEFAULT_SETTINGS, ...settings.value };
-    state.events = eventRows.sort((a, b) => a.ts - b.ts).slice(-1600);
+    state.settings.dailyNew = Math.max(1, Math.floor(Number(state.settings.dailyNew) || DEFAULT_SETTINGS.dailyNew));
+    state.settings.sessionSize = Math.max(1, Math.floor(Number(state.settings.sessionSize) || DEFAULT_SETTINGS.sessionSize));
+    const profiles = metaRows.find((item) => item.key === "profiles");
+    state.profiles = new Map(Array.isArray(profiles?.value) ? profiles.value : []);
+    const adventure = metaRows.find((item) => item.key === "adventure");
+    if (adventure?.value) state.adventure = { ...DEFAULT_ADVENTURE_STATE, ...adventure.value };
+    state.events = eventRows.sort((a, b) => a.ts - b.ts).slice(-MAX_EVENTS);
+    state.progress.forEach((progress, id) => {
+      const word = WORD_BY_ID.get(id);
+      if (!word || !progress.exposures) return;
+      const calculated = calculateMastery(word, progress);
+      progress.mastery = calculated.mastery;
+      progress.status = calculated.status;
+    });
     state.ready = true;
   }
 
@@ -269,11 +365,17 @@
   }
 
   function weakWords() {
-    return WORDS.filter((word) => state.progress.has(word.id)).sort((a, b) => weakRank(b) - weakRank(a));
+    return WORDS.filter((word) => getProgress(word.id).exposures > 0).sort((a, b) => weakRank(b) - weakRank(a));
   }
 
   function unstartedWords() {
-    return WORDS.filter((word) => !state.progress.has(word.id));
+    return WORDS.filter((word) => getProgress(word.id).exposures === 0);
+  }
+
+  function todayIntroducedCount() {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    return WORDS.filter((word) => getProgress(word.id).firstSeen >= start.getTime()).length;
   }
 
   function todayEventIds() {
@@ -283,12 +385,18 @@
   }
 
   function sampleDistractors(word, count, samePos = true) {
-    const candidates = WORDS.filter(
+    let candidates = WORDS.filter(
       (candidate) =>
         candidate.id !== word.id &&
         (!samePos || !word.pos || candidate.pos === word.pos) &&
         candidate.core !== word.core,
     );
+    if (candidates.length < count) {
+      const existing = new Set(candidates.map((candidate) => candidate.id));
+      candidates = [...candidates, ...WORDS.filter((candidate) =>
+        candidate.id !== word.id && !existing.has(candidate.id) && candidate.core !== word.core,
+      )];
+    }
     const start = (word.id * 37 + word.word.length * 11) % Math.max(1, candidates.length);
     const result = [];
     for (let offset = 0; result.length < count && offset < candidates.length; offset += 1) {
@@ -332,7 +440,7 @@
       base.answer = correct;
       base.options = shuffle([
         correct,
-        ...distractors.slice(0, 3).map((item) => `${item.pos ? `${item.pos}. ` : ""}${item.core}`),
+        ...distractors.slice(0, 5).map((item) => `${item.pos ? `${item.pos}. ` : ""}${item.core}`),
       ]);
       return base;
     }
@@ -356,7 +464,7 @@
       base.display = "_____";
       base.phonetic = "";
       base.prompt = contextStem(word, cue);
-      base.options = shuffle([word.word, ...distractors.slice(0, 3).map((item) => item.word)]);
+      base.options = shuffle([word.word, ...distractors.slice(0, 5).map((item) => item.word)]);
       return base;
     }
     const confusionWords = word.confusions
@@ -368,13 +476,13 @@
     base.display = word.core;
     base.phonetic = "";
     base.prompt = word.confusions.length ? "从易混词中选出正确拼写" : "选出与该含义对应的单词";
-    base.options = shuffle([word.word, ...extras.slice(0, 3).map((item) => item.word)]);
+    base.options = shuffle([word.word, ...extras.slice(0, 5).map((item) => item.word)]);
     return base;
   }
 
   function weakestType(progress, word) {
     if (!progress.exposures) return "recognition";
-    const types = Object.keys(TYPE_WEIGHTS).filter((type) => type !== "discrimination" || word.confusions.length);
+    const types = typesForWord(word);
     return types.sort(
       (a, b) => evidenceScore(progress.evidence[a], a) - evidenceScore(progress.evidence[b], b),
     )[0];
@@ -397,15 +505,19 @@
       return [...touched, ...fallback.filter((word) => !ids.includes(word.id))].slice(0, count);
     }
     if (mode === "weak" || mode.startsWith("type:")) {
-      const ranked = weakWords();
-      return [...ranked, ...unstartedWords()].slice(0, count);
+      const forcedType = mode.startsWith("type:") ? mode.split(":")[1] : null;
+      const eligible = (word) => !forcedType || typesForWord(word).includes(forcedType);
+      const ranked = weakWords().filter(eligible);
+      return [...ranked, ...unstartedWords().filter(eligible)].slice(0, count);
     }
-    const due = dueWords();
+    const studiedToday = new Set(todayEventIds());
+    const due = dueWords().filter((word) => !studiedToday.has(word.id));
     const dueIds = new Set(due.map((word) => word.id));
-    const weak = weakWords().filter((word) => !dueIds.has(word.id) && getProgress(word.id).status !== "mastered");
-    const newLimit = Math.min(state.settings.dailyNew, Math.max(5, Math.ceil(count * 0.55)));
-    const fresh = unstartedWords().slice(0, newLimit);
-    const combined = [...due, ...weak.slice(0, Math.ceil(count * 0.2)), ...fresh];
+    const weak = weakWords().filter((word) => !studiedToday.has(word.id) && !dueIds.has(word.id) && getProgress(word.id).status !== "mastered");
+    const newLimit = Math.max(0, state.settings.dailyNew - todayIntroducedCount());
+    const dueHead = due.slice(0, Math.min(due.length, Math.ceil(count * 0.65)));
+    const fresh = unstartedWords().slice(0, Math.min(newLimit, Math.max(0, count - dueHead.length)));
+    const combined = [...dueHead, ...fresh, ...due.slice(dueHead.length), ...weak];
     const seen = new Set();
     return combined.filter((word) => !seen.has(word.id) && seen.add(word.id)).slice(0, count);
   }
@@ -421,22 +533,34 @@
   }
 
   function startSession(mode, forcedWordId = null) {
-    const count = mode === "weak" ? 20 : mode === "boss" ? 50 : mode === "exam" ? 30 : state.settings.sessionSize;
+    const todayRemaining = Math.max(0, state.settings.dailyNew - todayEventIds().length);
+    const count = mode === "today"
+      ? (todayRemaining || state.settings.sessionSize)
+      : mode === "weak"
+        ? Math.min(20, state.settings.sessionSize)
+        : mode === "boss"
+          ? 50
+          : mode === "exam"
+            ? 30
+            : state.settings.sessionSize;
     let selected = forcedWordId ? [WORD_BY_ID.get(forcedWordId)].filter(Boolean) : chooseWords(mode, count);
     if (mode === "random") selected = shuffle(WORDS).slice(0, count);
     const forcedType = mode.startsWith("type:") ? mode.split(":")[1] : null;
     const strict = mode === "exam" || mode === "boss";
     let questions = forcedWordId
-      ? Object.keys(TYPE_WEIGHTS).map((type) => createQuestion(selected[0], type, false))
+      ? typesForWord(selected[0]).map((type) => createQuestion(selected[0], type, false))
       : selected.map((word, index) => {
-          const type = forcedType || (strict ? Object.keys(TYPE_WEIGHTS)[index % 5] : weakestType(getProgress(word.id), word));
+          const allowed = typesForWord(word);
+          const type = forcedType || (strict ? allowed[index % allowed.length] : weakestType(getProgress(word.id), word));
           const safeType = type === "discrimination" && !word.confusions.length ? "context" : type;
           return createQuestion(word, safeType, strict);
         });
     if (mode === "today" && !forcedWordId) {
-      const fresh = selected.filter((word) => !state.progress.has(word.id)).slice(0, 8);
+      const fresh = selected.filter((word) => !getProgress(word.id).exposures).slice(0, 8);
       fresh.forEach((word, index) => {
-        const followUp = createQuestion(word, index % 2 ? "recall" : "context", false);
+        const allowed = typesForWord(word);
+        const followUpType = allowed.includes("recall") && index % 2 ? "recall" : "context";
+        const followUp = createQuestion(word, followUpType, false);
         const insertAt = Math.min(questions.length, 5 + index * 4);
         questions.splice(insertAt, 0, followUp);
       });
@@ -469,12 +593,13 @@
     const question = session.questions[session.index];
     const word = WORD_BY_ID.get(question.wordId);
     const responseMs = Math.max(180, Date.now() - session.questionStartedAt);
-    const correct = normalizeAnswer(value) === normalizeAnswer(question.answer);
+    const unknown = value === "__UNKNOWN__";
+    const correct = !unknown && normalizeAnswer(value) === normalizeAnswer(question.answer);
     session.answered = true;
     session.selected = value;
     session.correct += correct ? 1 : 0;
     session.wrong += correct ? 0 : 1;
-    session.feedback = { correct, responseMs };
+    session.feedback = { correct, unknown, responseMs };
     if (!correct && !question.strict && question.repeatCount < 2) {
       const repeat = { ...question, id: `${question.id}-r${question.repeatCount + 1}`, repeatCount: question.repeatCount + 1 };
       session.questions.splice(Math.min(session.index + 4, session.questions.length), 0, repeat);
@@ -516,14 +641,14 @@
     }
     progress.due = now + progress.intervalHours * HOUR;
     progress.stubborn = progress.lapses >= 4 || (progress.exposures >= 8 && progress.avgMs > 5500);
-    const calculated = calculateMastery(progress);
+    const calculated = calculateMastery(word, progress);
     progress.mastery = calculated.mastery;
     progress.status = calculated.status;
     if (!correct && priorStatus === "mastered") progress.status = "unstable";
     state.progress.set(word.id, progress);
     const event = { ts: now, id: word.id, type, correct, ms: responseMs, mode };
     state.events.push(event);
-    state.events = state.events.slice(-1600);
+    state.events = state.events.slice(-MAX_EVENTS);
     await Promise.all([put("progress", progress), addEvent(event)]);
   }
 
@@ -560,6 +685,140 @@
     window.speechSynthesis.speak(utterance);
   }
 
+  function chapterUnlocked(chapter) {
+    if (!chapter || chapter.episode === 1) return true;
+    const previous = ADVENTURE.chapters.find((item) => item.episode === chapter.episode - 1);
+    return !previous || state.adventure.completed.includes(previous.id);
+  }
+
+  async function saveAdventure() {
+    await put("meta", { key: "adventure", value: state.adventure });
+  }
+
+  async function recordStoryNode(node) {
+    if (!node || state.adventure.seenNodes.includes(node.id)) return;
+    const now = Date.now();
+    state.adventure.seenNodes = [...state.adventure.seenNodes, node.id];
+    await Promise.all(node.wordIds.map(async (id) => {
+      const progress = normalizeProgress(structuredClone(getProgress(id)));
+      progress.story.exposures += 1;
+      progress.story.lastAt = now;
+      progress.story.nodes = [...new Set([...progress.story.nodes, node.id])];
+      state.progress.set(id, progress);
+      await put("progress", progress);
+    }));
+    await saveAdventure();
+  }
+
+  async function enterAdventureNode(nodeId) {
+    const node = ADVENTURE.nodeById[nodeId];
+    if (!node) return;
+    state.adventure.chapterNodes = { ...state.adventure.chapterNodes, [state.adventure.chapterId]: nodeId };
+    state.adventureOutcome = null;
+    state.adventureGlossId = null;
+    await recordStoryNode(node);
+    await saveAdventure();
+    render();
+  }
+
+  async function startAdventure(chapterId) {
+    const chapter = ADVENTURE.chapterById[chapterId] || ADVENTURE.chapters[0];
+    if (!chapterUnlocked(chapter)) {
+      showToast("前方道路仍被迷雾封锁");
+      return;
+    }
+    state.adventure.chapterId = chapter.id;
+    state.adventureOpen = true;
+    state.adventureFinished = null;
+    state.adventureOutcome = null;
+    const saved = state.adventure.chapterNodes[chapter.id];
+    const nodeId = state.adventure.completed.includes(chapter.id) ? chapter.startNode : (saved || chapter.startNode);
+    await enterAdventureNode(nodeId);
+  }
+
+  async function chooseAdventure(optionIndex) {
+    if (state.adventureOutcome) return;
+    const nodeId = state.adventure.chapterNodes[state.adventure.chapterId];
+    const node = ADVENTURE.nodeById[nodeId];
+    const option = node?.choices?.[optionIndex];
+    if (!option) return;
+    const correct = option.correct !== false;
+    const word = WORD_BY_ID.get(option.testWord);
+    if (word) {
+      await recordResult(word, "context", correct, 2600, "adventure");
+      const progress = normalizeProgress(structuredClone(getProgress(word.id)));
+      progress.story[correct ? "correct" : "wrong"] += 1;
+      state.progress.set(word.id, progress);
+      await put("progress", progress);
+    }
+    state.adventure[correct ? "correct" : "wrong"] += 1;
+    if (correct && option.gainItem && !state.adventure.inventory.includes(option.gainItem)) {
+      state.adventure.inventory = [...state.adventure.inventory, option.gainItem];
+    }
+    state.adventureOutcome = {
+      correct,
+      text: option.outcome,
+      next: correct ? option.next : null,
+    };
+    await saveAdventure();
+    render();
+  }
+
+  async function continueAdventure() {
+    const outcome = state.adventureOutcome;
+    if (!outcome) return;
+    if (!outcome.correct || !outcome.next) {
+      state.adventureOutcome = null;
+      render();
+      return;
+    }
+    if (outcome.next !== "complete") {
+      await enterAdventureNode(outcome.next);
+      return;
+    }
+    const chapterId = state.adventure.chapterId;
+    if (!state.adventure.completed.includes(chapterId)) {
+      state.adventure.completed = [...state.adventure.completed, chapterId];
+    }
+    const currentIndex = ADVENTURE.chapters.findIndex((chapter) => chapter.id === chapterId);
+    const nextChapter = ADVENTURE.chapters[currentIndex + 1];
+    if (nextChapter) state.adventure.chapterId = nextChapter.id;
+    state.adventureFinished = chapterId;
+    state.adventureOutcome = null;
+    await saveAdventure();
+    render();
+  }
+
+  async function revealStoryWord(id) {
+    const word = WORD_BY_ID.get(id);
+    if (!word) return;
+    const progress = normalizeProgress(structuredClone(getProgress(id)));
+    progress.story.hints += 1;
+    progress.story.lastAt = Date.now();
+    state.progress.set(id, progress);
+    state.adventureGlossId = id;
+    await put("progress", progress);
+    render();
+  }
+
+  function renderStoryText(text) {
+    const tokenPattern = /\[\[([a-z-]+)\]\]/gi;
+    let cursor = 0;
+    let html = "";
+    for (const match of text.matchAll(tokenPattern)) {
+      html += escapeHtml(text.slice(cursor, match.index));
+      const word = WORDS.find((item) => item.word.toLowerCase() === match[1].toLowerCase());
+      if (!word) html += escapeHtml(match[1]);
+      else {
+        const encounters = getProgress(word.id).story?.exposures || 0;
+        const level = encounters <= 1 ? "shown" : encounters === 2 ? "fading" : "hidden";
+        html += `<button class="story-word ${level}" data-action="story-word" data-id="${word.id}"><span>${escapeHtml(match[1])}</span>${level === "hidden" ? "" : `<em>${escapeHtml(word.core)}</em>`}</button>`;
+      }
+      cursor = match.index + match[0].length;
+    }
+    return html + escapeHtml(text.slice(cursor));
+  }
+
   function pageHeader(eyebrow, title, note) {
     return `<header class="page-head"><div><p class="eyebrow">${escapeHtml(eyebrow)}</p><h1 class="page-title">${escapeHtml(title)}</h1></div><p class="page-note">${escapeHtml(note)}</p></header>`;
   }
@@ -571,6 +830,8 @@
     const weak = weakWords().filter((word) => getProgress(word.id).mastery < 50).length;
     const masteredPercent = WORDS.length ? (counts.mastered / WORDS.length) * 100 : 0;
     const todayIds = todayEventIds();
+    const todayStudied = todayIds.length;
+    const todayRemaining = Math.max(0, state.settings.dailyNew - todayStudied);
     const todayCorrect = state.events.filter((event) => todayIds.includes(event.id) && event.correct).length;
     return `<section class="page today-page">
       ${pageHeader("TODAY", "今天，只清该清的词", `${WORDS.length} 词已完整载入`)}
@@ -584,23 +845,25 @@
               <div class="progress-meta"><span>真正掌握 ${counts.mastered}</span><span>${masteredPercent.toFixed(1)}%</span></div>
             </div>
           </div>
-          <button class="primary-button button-wide" data-action="start-session" data-mode="today">开始今日歼灭 ${icon("arrow", 18)}</button>
+          <button class="primary-button button-wide" data-action="start-session" data-mode="today">${todayRemaining ? `开始今日歼灭 · ${todayRemaining} 词` : "今日已达标 · 继续加练"} ${icon("arrow", 18)}</button>
         </article>
         <div class="side-stack">
           <article class="card pressure-card">
             <div class="section-kicker">今日节奏</div>
-            <div class="pressure-row">
+            <div class="pressure-row four">
               <div class="pressure-item"><span class="pressure-value">${due}</span><span class="pressure-name">到期复习</span></div>
-              <div class="pressure-item"><span class="pressure-value">${state.settings.dailyNew}</span><span class="pressure-name">新词上限</span></div>
+              <div class="pressure-item"><span class="pressure-value">${state.settings.dailyNew}</span><span class="pressure-name">今日目标</span></div>
+              <div class="pressure-item"><span class="pressure-value">${todayStudied}</span><span class="pressure-name">今日已学</span></div>
               <div class="pressure-item"><span class="pressure-value">${weak}</span><span class="pressure-name">薄弱词</span></div>
             </div>
           </article>
           <article class="card quick-card">
             <div class="section-kicker">短时追杀</div>
             <h2 class="quick-title">不想完整学，也别断档</h2>
-            <p class="quick-text">只抽当前最值得复习的词，集中攻击拼写、主动回忆和最近错误。</p>
+            <p class="quick-text">阅读词练理解，写作词才练提取与拼写；剧情里的相遇也会在这里得到验证。</p>
             <div class="quick-actions">
-              <button class="secondary-button" data-action="start-session" data-mode="weak">${icon("bolt", 17)} 5 分钟极速弱点</button>
+              <button class="secondary-button" data-action="nav" data-page="adventure">${icon("adventure", 17)} 继续北境冒险</button>
+              <button class="ghost-button" data-action="start-session" data-mode="weak">5 分钟极速弱点</button>
               <button class="ghost-button" data-action="start-session" data-mode="exam">今日验收</button>
             </div>
           </article>
@@ -615,6 +878,80 @@
     </section>`;
   }
 
+  function renderAdventure() {
+    const completed = state.adventure.completed.length;
+    const active = ADVENTURE.chapterById[state.adventure.chapterId] || ADVENTURE.chapters[0];
+    const currentNodeId = state.adventure.chapterNodes[active.id] || active.startNode;
+    const currentIndex = Math.max(0, active.nodes.findIndex((node) => node.id === currentNodeId));
+    const encounters = [...state.progress.values()].reduce((sum, progress) => sum + (progress.story?.exposures || 0), 0);
+    return `<section class="page adventure-page">
+      ${pageHeader("STORY", "剧情冒险", `${encounters} 次单词相遇 · ${state.adventure.inventory.length} 件线索`)}
+      <div class="adventure-home">
+        <article class="adventure-hero scene-${escapeHtml(active.nodes[currentIndex]?.scene || "pasture")}">
+          <div class="adventure-hero-shade"></div>
+          <div class="adventure-hero-copy">
+            <div class="story-index">EPISODE ${String(active.episode).padStart(2, "0")}</div>
+            <h2>${escapeHtml(active.title)}</h2>
+            <p class="story-en">${escapeHtml(active.subtitle)}</p>
+            <p>${escapeHtml(active.summary)}</p>
+            <div class="story-progress-line"><span style="width:${((currentIndex + (state.adventure.completed.includes(active.id) ? 1 : 0)) / active.nodes.length) * 100}%"></span></div>
+            <button class="primary-button" data-action="start-adventure" data-chapter="${active.id}">${icon("adventure", 18)} ${state.adventure.completed.includes(active.id) ? "再次进入" : currentIndex ? "继续调查" : "进入故事"}</button>
+          </div>
+        </article>
+        <div class="chapter-stack">
+          ${ADVENTURE.chapters.map((chapter) => {
+            const unlocked = chapterUnlocked(chapter);
+            const done = state.adventure.completed.includes(chapter.id);
+            const nodeId = state.adventure.chapterNodes[chapter.id] || chapter.startNode;
+            const nodeIndex = Math.max(0, chapter.nodes.findIndex((node) => node.id === nodeId));
+            return `<button class="chapter-card ${active.id === chapter.id ? "active" : ""} ${unlocked ? "" : "locked"}" data-action="select-chapter" data-chapter="${chapter.id}" ${unlocked ? "" : "disabled"}>
+              <span class="chapter-number">${String(chapter.episode).padStart(2, "0")}</span>
+              <span><strong>${escapeHtml(chapter.title)}</strong><small>${done ? "已完成" : unlocked ? `${nodeIndex + 1} / ${chapter.nodes.length}` : "迷雾封锁"}</small></span>
+              ${icon(done ? "check" : "arrow", 17)}
+            </button>`;
+          }).join("")}
+          <article class="inventory-card"><span>${icon("bag", 18)} 旅途物品</span><strong>${state.adventure.inventory.length || "—"}</strong><small>${state.adventure.inventory.slice(-2).map(escapeHtml).join(" · ") || "线索会留在这里"}</small></article>
+        </div>
+        <div class="world-strip">
+          ${ADVENTURE.arcs.map((arc) => `<div class="world-arc ${arc.number === 1 ? "awake" : ""}"><span>${String(arc.number).padStart(2, "0")}</span><strong>${escapeHtml(arc.title)}</strong><small>${arc.startWordId}–${arc.endWordId}</small></div>`).join("")}
+        </div>
+      </div>
+    </section>`;
+  }
+
+  function renderAdventurePlayer() {
+    if (!state.adventureOpen) return "";
+    const chapter = ADVENTURE.chapterById[state.adventure.chapterId] || ADVENTURE.chapters[0];
+    if (state.adventureFinished) {
+      const finished = ADVENTURE.chapterById[state.adventureFinished];
+      const nextChapter = ADVENTURE.chapters.find((item) => item.episode === finished.episode + 1);
+      return `<div class="adventure-overlay"><div class="adventure-finish scene-${escapeHtml(finished.nodes.at(-1).scene)}"><div class="finish-panel"><div class="section-kicker">EPISODE CLEAR</div><h2>${escapeHtml(finished.title)}</h2><p>${escapeHtml(finished.summary)}</p><div class="done-stats"><div><strong>${finished.nodes.length * 5}</strong><span>核心词相遇</span></div><div><strong>${state.adventure.correct}</strong><span>情境判断正确</span></div><div><strong>${state.adventure.inventory.length}</strong><span>旅途物品</span></div></div><div class="modal-actions">${nextChapter ? `<button class="primary-button" data-action="start-adventure" data-chapter="${nextChapter.id}">进入 ${escapeHtml(nextChapter.title)} ${icon("arrow", 17)}</button>` : ""}<button class="ghost-button" data-action="close-adventure">返回冒险地图</button></div></div></div></div>`;
+    }
+    const nodeId = state.adventure.chapterNodes[chapter.id] || chapter.startNode;
+    const node = ADVENTURE.nodeById[nodeId] || chapter.nodes[0];
+    const nodeIndex = Math.max(0, chapter.nodes.findIndex((item) => item.id === node.id));
+    const gloss = WORD_BY_ID.get(state.adventureGlossId);
+    return `<div class="adventure-overlay">
+      <div class="adventure-player scene-${escapeHtml(node.scene)}">
+        <header class="adventure-player-head">
+          <button class="glass-button" data-action="close-adventure" aria-label="返回地图">${icon("back", 19)}</button>
+          <div><span>EP ${String(chapter.episode).padStart(2, "0")} · ${escapeHtml(node.location)}</span><div class="story-progress-line"><span style="width:${((nodeIndex + 1) / chapter.nodes.length) * 100}%"></span></div></div>
+          <div class="inventory-mini">${icon("bag", 17)} ${state.adventure.inventory.length}</div>
+        </header>
+        <div class="scene-space"><div class="scene-caption">${escapeHtml(node.mood)}</div></div>
+        <section class="dialogue-panel">
+          <div class="speaker-row"><span class="speaker-avatar">${escapeHtml(node.speaker.slice(0, 1))}</span><strong>${escapeHtml(node.speaker)}</strong><button class="story-speak" data-action="speak" data-word="${escapeHtml(node.lines.map((line) => line.replace(/\[\[|\]\]/g, "")).join(" "))}">${icon("volume", 16)}</button></div>
+          <div class="story-lines">${node.lines.map((line) => `<p>${renderStoryText(line)}</p>`).join("")}</div>
+          ${gloss ? `<div class="story-gloss"><button data-action="close-story-word">${icon("close", 14)}</button><strong>${escapeHtml(gloss.word)}</strong><span>${escapeHtml(gloss.phonetic)}</span><em>${escapeHtml(gloss.core)}</em><small>${wordProfile(gloss) === "writing" ? "写作词 · 需要会写" : "阅读词 · 理解即可"}</small></div>` : ""}
+          <div class="story-task"><span>当前判断</span><strong>${escapeHtml(node.prompt)}</strong></div>
+          ${state.adventureOutcome
+            ? `<div class="story-outcome ${state.adventureOutcome.correct ? "correct" : "wrong"}"><p>${escapeHtml(state.adventureOutcome.text)}</p><button class="${state.adventureOutcome.correct ? "secondary-button" : "primary-button"}" data-action="continue-adventure">${state.adventureOutcome.correct ? "继续" : "重新判断"} ${icon("arrow", 16)}</button></div>`
+            : `<div class="story-choices">${node.choices.map((choice, index) => `<button data-action="adventure-choice" data-index="${index}"><span>${index + 1}</span>${escapeHtml(choice.label)}</button>`).join("")}</div>`}
+        </section>
+      </div>
+    </div>`;
+  }
+
   function filterWords() {
     const query = normalizeAnswer(state.library.search);
     return WORDS.filter((word) => {
@@ -623,6 +960,7 @@
       if (!matchesQuery) return false;
       if (state.library.filter === "all") return true;
       if (state.library.filter === "confusion") return word.confusions.length > 0;
+      if (state.library.filter === "reading" || state.library.filter === "writing") return wordProfile(word) === state.library.filter;
       if (state.library.filter === "stubborn") return progress.stubborn;
       if (state.library.filter === "revived") return progress.revived;
       return progress.status === state.library.filter;
@@ -642,6 +980,8 @@
       ["unstable", "不稳定"],
       ["learning", "学习中"],
       ["mastered", "已掌握"],
+      ["reading", "阅读词"],
+      ["writing", "写作词"],
       ["confusion", "易混"],
       ["stubborn", "顽固"],
       ["revived", "复活"],
@@ -657,7 +997,7 @@
           const progress = getProgress(word.id);
           return `<button class="word-card" data-action="word-detail" data-id="${word.id}">
             <div class="word-card-head"><span class="word-name">${escapeHtml(word.word)}</span><span class="status-dot ${progress.status}" title="${STATUS_LABELS[progress.status]}"></span></div>
-            <div class="word-index">NO. ${String(word.id).padStart(4, "0")} · ${escapeHtml(word.phonetic)}</div>
+            <div class="word-index">NO. ${String(word.id).padStart(4, "0")} · ${wordProfile(word) === "writing" ? "写作" : "阅读"} · ${escapeHtml(word.phonetic)}</div>
             <p class="word-meaning">${escapeHtml(word.meaning)}</p>
           </button>`;
         }).join("")}</div>` : `<div class="empty-state">没有符合条件的单词</div>`}
@@ -667,8 +1007,8 @@
   }
 
   function weaknessCounts() {
-    const touched = WORDS.filter((word) => state.progress.has(word.id));
-    const typeWeak = (type) => touched.filter((word) => evidenceScore(getProgress(word.id).evidence[type], type) < 0.55).length;
+    const touched = WORDS.filter((word) => getProgress(word.id).exposures > 0);
+    const typeWeak = (type) => touched.filter((word) => typesForWord(word).includes(type) && evidenceScore(getProgress(word.id).evidence[type], type) < 0.55).length;
     return {
       recall: typeWeak("recall"),
       spelling: typeWeak("spelling"),
@@ -682,8 +1022,8 @@
   function renderWeakness() {
     const counts = weaknessCounts();
     const cards = [
-      ["recall", "target", "主动回忆弱", "中文出现时，英文提取不够稳定", counts.recall],
-      ["spelling", "keyboard", "拼写薄弱", "完整输入，清掉形似但写不出的词", counts.spelling],
+      ["recall", "target", "写作提取弱", "只检查写作词的中文 → 英文", counts.recall],
+      ["spelling", "keyboard", "写作词拼写", "阅读词不强制默写，输出词精确到字母", counts.spelling],
       ["context", "layers", "多义与语境", "不只认一个中文，追踪不同义项", counts.context],
       ["discrimination", "eye", "易混词猎杀", "把形近、音近词放在一起强制区分", counts.discrimination],
       ["recognition", "timer", "反应速度慢", "答对但想太久，也会继续出现", counts.slow],
@@ -691,6 +1031,7 @@
     ];
     return `<section class="page weakness-page">
       ${pageHeader("WEAKNESS", "只打薄弱处", "按记忆证据自动归因")}
+      <div class="weak-tools"><button class="ghost-button" data-action="start-session" data-mode="random">${icon("shuffle", 16)} 全库随机</button><button class="ghost-button" data-action="start-session" data-mode="exam">${icon("shield", 16)} 今日验收</button><button class="secondary-button" data-action="start-session" data-mode="boss">${icon("flame", 16)} Boss Rush</button></div>
       <div class="weak-grid">
         ${cards.map(([type, iconName, title, text, count]) => `<button class="weak-card" data-action="start-session" data-mode="type:${type}">
           <span class="weak-count">${count}</span><span class="weak-icon">${icon(iconName, 20)}</span><h3>${title}</h3><p>${text}</p>
@@ -743,23 +1084,27 @@
       ["基本掌握", counts.learning, "blue"],
       ["长期掌握", counts.mastered, "green"],
     ];
+    const writingCount = WORDS.filter((word) => wordProfile(word) === "writing").length;
     return `<section class="page data-page">
       ${pageHeader("EVIDENCE", "记忆证据", "掌握度来自真实作答")}
       <div class="data-grid">
-        <article class="card data-card"><h3>掌握分布</h3><div class="distribution-list">${rows.map(([label, value, className]) => `<div class="distribution-row"><span>${label}</span><div class="bar"><span class="${className}" style="width:${(value / WORDS.length) * 100}%"></span></div><strong>${value}</strong></div>`).join("")}</div></article>
+        <article class="card data-card"><h3>掌握分布</h3><div class="distribution-list">${rows.map(([label, value, className]) => `<div class="distribution-row"><span>${label}</span><div class="bar"><span class="${className}" style="width:${(value / WORDS.length) * 100}%"></span></div><strong>${value}</strong></div>`).join("")}</div><div class="profile-summary"><span>阅读词 ${WORDS.length - writingCount}</span><span>写作词 ${writingCount}</span></div></article>
         <article class="card data-card"><h3>最近 7 天作答</h3><div class="trend-bars">${days.map((day) => `<div class="trend-day"><div title="${day.count} 次作答，答对 ${day.correct}" class="trend-column" style="height:${Math.max(5, (day.count / max) * 100)}%"></div><span>${day.label}</span></div>`).join("")}</div></article>
         <div class="data-actions">
           <button class="ghost-button" data-action="export-data">${icon("download", 17)} 导出进度</button>
           <button class="ghost-button" data-action="import-data">${icon("upload", 17)} 导入进度</button>
           <input id="import-file" class="sr-only" type="file" accept="application/json,.json" />
+          <button class="ghost-button" data-action="install-app">${icon("install", 17)} 安装到本机</button>
           <button class="danger-button" data-action="reset-data">${icon("trash", 17)} 清空进度</button>
-          <label class="settings-inline">每日新词上限 <input data-role="daily-new" type="number" min="5" max="100" step="5" value="${state.settings.dailyNew}" /></label>
+          <label class="settings-inline">每日词量 <input data-role="daily-new" type="number" min="1" step="1" value="${state.settings.dailyNew}" /></label>
+          <label class="settings-inline compact">专项每轮 <input data-role="session-size" type="number" min="1" step="1" value="${state.settings.sessionSize}" /></label>
         </div>
       </div>
     </section>`;
   }
 
   function renderPage() {
+    if (state.page === "adventure") return renderAdventure();
     if (state.page === "library") return renderLibrary();
     if (state.page === "weak") return renderWeakness();
     if (state.page === "test") return renderTests();
@@ -770,12 +1115,12 @@
   function renderSidebar() {
     const items = [
       ["today", "today", "今日"],
+      ["adventure", "adventure", "冒险"],
       ["library", "library", "词库"],
       ["weak", "weak", "弱点"],
-      ["test", "test", "测试"],
       ["data", "data", "数据"],
     ];
-    return `<aside class="sidebar"><div class="brand"><img src="./icons/icon-192.png" alt=""><div><div class="brand-name">词斩</div><div class="brand-sub">VOCABULARY SLAYER</div></div></div><nav class="nav" aria-label="主导航">${items.map(([page, iconName, label]) => `<button class="nav-button ${state.page === page ? "active" : ""}" data-action="nav" data-page="${page}"><span class="nav-icon">${icon(iconName, 19)}</span><span>${label}</span></button>`).join("")}</nav><div class="sidebar-foot">本轮进度自动保存<br>${WORDS.length} 个易错词</div></aside>`;
+    return `<aside class="sidebar"><div class="brand"><img src="./icons/icon-192.png" alt=""><div><div class="brand-name">词斩</div><div class="brand-sub">VOCABULARY SLAYER</div></div></div><nav class="nav" aria-label="主导航">${items.map(([page, iconName, label]) => `<button class="nav-button ${state.page === page ? "active" : ""}" data-action="nav" data-page="${page}"><span class="nav-icon">${icon(iconName, 19)}</span><span>${label}</span></button>`).join("")}</nav><div class="sidebar-foot">${state.installAvailable ? `<button class="sidebar-install" data-action="install-app">${icon("install", 15)} 安装词斩</button>` : ""}进度自动保存<br>${WORDS.length} 个易错词</div></aside>`;
   }
 
   function renderStudy() {
@@ -793,10 +1138,10 @@
     const progress = ((session.index + (session.answered ? 1 : 0)) / session.questions.length) * 100;
     const feedback = session.feedback;
     const answerArea = session.answered
-      ? `<div class="feedback-panel ${feedback.correct ? "good" : "bad"}"><div><div class="feedback-title">${feedback.correct ? "提取成功" : "已加入短时追杀"} · ${(feedback.responseMs / 1000).toFixed(1)}s</div><div class="feedback-answer"><strong>${escapeHtml(word.word)}</strong> ${escapeHtml(word.phonetic)} · ${escapeHtml(word.meaning)}</div></div><button class="${feedback.correct ? "secondary-button" : "primary-button"}" data-action="next-question">下一题 ${icon("arrow", 16)}</button></div>`
+      ? `<div class="feedback-panel ${feedback.correct ? "good" : "bad"}"><div><div class="feedback-title">${feedback.correct ? "提取成功" : feedback.unknown ? "已诚实标记不认识" : "已加入短时追杀"} · ${(feedback.responseMs / 1000).toFixed(1)}s</div><div class="feedback-answer"><strong>${escapeHtml(word.word)}</strong> ${escapeHtml(word.phonetic)} · ${escapeHtml(word.meaning)}</div></div><button class="${feedback.correct ? "secondary-button" : "primary-button"}" data-action="next-question">下一题 ${icon("arrow", 16)}</button></div>`
       : question.typed
         ? `<form class="type-answer" data-role="answer-form"><input name="answer" placeholder="输入完整英文" autocapitalize="off" autocomplete="off" spellcheck="false" /><button class="primary-button" type="submit">确认</button></form>`
-        : `<div class="options">${question.options.map((option, index) => `<button class="option-button" data-action="answer-option" data-value="${escapeHtml(option)}"><span class="option-key">${index + 1}</span><span>${escapeHtml(option)}</span></button>`).join("")}</div>`;
+        : `<div class="options">${question.options.map((option, index) => `<button class="option-button" data-action="answer-option" data-value="${escapeHtml(option)}"><span class="option-key">${index + 1}</span><span>${escapeHtml(option)}</span></button>`).join("")}<button class="option-button unknown-option" data-action="answer-option" data-value="__UNKNOWN__"><span class="option-key">0</span><span>确实不认识</span></button></div>`;
     return `<div class="study-overlay"><div class="study-stage">
       <div class="study-head"><button class="icon-button" data-action="close-session" aria-label="结束训练">${icon("back", 19)}</button><div class="study-head-center"><div class="study-title">${escapeHtml(session.title)}</div><div class="study-count">${session.index + 1} / ${session.questions.length}</div><div class="study-progress"><span style="width:${progress}%"></span></div></div><button class="icon-button" data-action="speak" data-word="${escapeHtml(word.word)}" aria-label="朗读" ${question.type !== "recognition" && !session.answered ? "disabled" : ""}>${icon("volume", 19)}</button></div>
       <div class="question-wrap"><article class="question-card"><span class="question-type">${TYPE_LABELS[question.type]}</span><div class="question-word">${escapeHtml(question.display)}</div><div class="question-phonetic">${escapeHtml(question.phonetic)}</div><p class="question-prompt">${escapeHtml(question.prompt)}</p></article></div>
@@ -809,14 +1154,23 @@
     const word = WORD_BY_ID.get(state.detailId);
     if (!word) return "";
     const progress = getProgress(word.id);
+    const profile = wordProfile(word);
+    const plan = ADVENTURE.wordPlan(word.id);
+    const relevantTypes = typesForWord(word);
+    const confusionItems = word.confusions.map((name) => ({
+      name,
+      core: WORDS.find((candidate) => candidate.word === name)?.core || "释义未收录",
+    }));
     return `<div class="modal-backdrop" data-action="close-detail"><article class="modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(word.word)} 详情" data-stop>
       <div class="modal-head"><div><div class="word-index">NO. ${String(word.id).padStart(4, "0")} · ${STATUS_LABELS[progress.status]}</div><h2 class="detail-word">${escapeHtml(word.word)}</h2><div class="detail-phonetic">${escapeHtml(word.phonetic)}</div></div><button class="icon-button" data-action="close-detail" aria-label="关闭">${icon("close", 18)}</button></div>
+      <div class="profile-switch"><button class="${profile === "reading" ? "active" : ""}" data-action="set-profile" data-profile="reading" data-id="${word.id}"><strong>阅读词</strong><span>看懂即可 · 免默写</span></button><button class="${profile === "writing" ? "active" : ""}" data-action="set-profile" data-profile="writing" data-id="${word.id}"><strong>写作词</strong><span>会用 · 会拼写</span></button></div>
       <div class="detail-core"><small>核心义</small><strong>${escapeHtml(word.core)}</strong></div>
       <p class="detail-memory">${escapeHtml(word.memory)}</p>
       <div class="sense-list">${word.senses.map((sense) => `<div class="sense-item"><span class="sense-pos">${escapeHtml(sense.pos || "释义")}</span>${escapeHtml(sense.text)}</div>`).join("")}</div>
-      ${word.confusions.length ? `<div class="detail-core"><small>易混词</small><strong>${word.confusions.map(escapeHtml).join(" · ")}</strong></div>` : ""}
-      <div class="fingerprint">${Object.keys(TYPE_WEIGHTS).map((type) => `<div class="fingerprint-item"><strong>${Math.round(evidenceScore(progress.evidence[type], type) * 100)}%</strong><span>${TYPE_SHORT[type]}</span></div>`).join("")}</div>
-      <div class="modal-actions"><button class="secondary-button" data-action="start-session" data-mode="word" data-id="${word.id}">${icon("target", 17)} 五维诊断</button><button class="ghost-button" data-action="speak" data-word="${escapeHtml(word.word)}">${icon("volume", 17)} 朗读</button></div>
+      ${confusionItems.length ? `<div class="detail-core confusion-core"><small>易混词</small><div class="confusion-list">${confusionItems.map((item) => `<span><strong>${escapeHtml(item.name)}</strong><em>${escapeHtml(item.core)}</em></span>`).join("")}</div></div>` : ""}
+      <div class="story-record"><span>${icon("adventure", 16)} 剧情登场</span><strong>${progress.story.exposures} 次相遇 · 第 ${plan.episode} 章首次 · 第 ${plan.delayedEpisode} 章延迟重现</strong></div>
+      <div class="fingerprint">${relevantTypes.map((type) => `<div class="fingerprint-item"><strong>${Math.round(evidenceScore(progress.evidence[type], type) * 100)}%</strong><span>${TYPE_SHORT[type]}</span></div>`).join("")}</div>
+      <div class="modal-actions"><button class="secondary-button" data-action="start-session" data-mode="word" data-id="${word.id}">${icon("target", 17)} 针对训练</button><button class="ghost-button" data-action="speak" data-word="${escapeHtml(word.word)}">${icon("volume", 17)} 朗读</button></div>
     </article></div>`;
   }
 
@@ -826,7 +1180,7 @@
 
   function render() {
     if (!state.ready) return;
-    root.innerHTML = `<div class="app-shell">${renderSidebar()}<main class="main">${renderPage()}</main></div>${renderStudy()}${renderDetail()}${renderToast()}`;
+    root.innerHTML = `<div class="app-shell">${renderSidebar()}<main class="main">${renderPage()}</main></div>${renderStudy()}${renderAdventurePlayer()}${renderDetail()}${renderToast()}`;
     if (state.session && !state.session.answered && !state.session.finished && state.session.questions[state.session.index]?.typed) {
       setTimeout(() => root.querySelector('[data-role="answer-form"] input')?.focus(), 20);
     }
@@ -849,6 +1203,8 @@
       exportedAt: new Date().toISOString(),
       vocabularyCount: WORDS.length,
       settings: state.settings,
+      profiles: [...state.profiles.entries()],
+      adventure: state.adventure,
       progress: [...state.progress.values()],
       events: state.events,
     };
@@ -874,10 +1230,14 @@
         state.progress.set(progress.id, progress);
         await put("progress", progress);
       }
-      state.events = Array.isArray(payload.events) ? payload.events.slice(-1600) : [];
+      state.events = Array.isArray(payload.events) ? payload.events.slice(-MAX_EVENTS) : [];
       for (const event of state.events) await addEvent(event);
       state.settings = { ...DEFAULT_SETTINGS, ...(payload.settings || {}) };
+      state.profiles = new Map(Array.isArray(payload.profiles) ? payload.profiles : []);
+      state.adventure = { ...DEFAULT_ADVENTURE_STATE, ...(payload.adventure || {}) };
       await put("meta", { key: "settings", value: state.settings });
+      await put("meta", { key: "profiles", value: [...state.profiles.entries()] });
+      await put("meta", { key: "adventure", value: state.adventure });
       showToast("进度已恢复");
     } catch (error) {
       showToast("文件无法识别，请选择词斩备份");
@@ -889,8 +1249,23 @@
     await Promise.all([clearStore("progress"), clearStore("events")]);
     state.progress.clear();
     state.events = [];
+    state.adventure = { ...DEFAULT_ADVENTURE_STATE, chapterNodes: {}, completed: [], inventory: [], seenNodes: [] };
+    await put("meta", { key: "adventure", value: state.adventure });
     render();
     showToast("学习进度已清空");
+  }
+
+  async function installApp() {
+    if (!installPrompt) {
+      if (window.matchMedia?.("(display-mode: standalone)").matches) showToast("词斩已安装到本机");
+      else showToast("可从 Chrome 地址栏右侧安装词斩");
+      return;
+    }
+    await installPrompt.prompt();
+    await installPrompt.userChoice;
+    installPrompt = null;
+    state.installAvailable = false;
+    render();
   }
 
   root.addEventListener("click", async (event) => {
@@ -904,6 +1279,41 @@
     } else if (action === "start-session") {
       state.detailId = null;
       startSession(target.dataset.mode || "today", Number(target.dataset.id) || null);
+    } else if (action === "start-adventure") {
+      await startAdventure(target.dataset.chapter);
+    } else if (action === "select-chapter") {
+      state.adventure.chapterId = target.dataset.chapter;
+      await saveAdventure();
+      render();
+    } else if (action === "close-adventure") {
+      state.adventureOpen = false;
+      state.adventureFinished = null;
+      state.adventureGlossId = null;
+      render();
+    } else if (action === "adventure-choice") {
+      await chooseAdventure(Number(target.dataset.index));
+    } else if (action === "continue-adventure") {
+      await continueAdventure();
+    } else if (action === "story-word") {
+      await revealStoryWord(Number(target.dataset.id));
+    } else if (action === "close-story-word") {
+      state.adventureGlossId = null;
+      render();
+    } else if (action === "set-profile") {
+      const id = Number(target.dataset.id);
+      const word = WORD_BY_ID.get(id);
+      if (!word) return;
+      state.profiles.set(id, target.dataset.profile === "writing" ? "writing" : "reading");
+      const progress = getProgress(id);
+      if (progress.exposures) {
+        const calculated = calculateMastery(word, progress);
+        progress.mastery = calculated.mastery;
+        progress.status = calculated.status;
+        state.progress.set(id, progress);
+        await put("progress", progress);
+      }
+      await put("meta", { key: "profiles", value: [...state.profiles.entries()] });
+      render();
     } else if (action === "answer-option") {
       await submitAnswer(target.dataset.value);
     } else if (action === "next-question") {
@@ -934,6 +1344,8 @@
       document.getElementById("import-file")?.click();
     } else if (action === "reset-data") {
       await resetData();
+    } else if (action === "install-app") {
+      await installApp();
     }
   });
 
@@ -960,16 +1372,25 @@
       await importData(event.target.files[0]);
     }
     if (event.target.matches('[data-role="daily-new"]')) {
-      state.settings.dailyNew = clamp(Number(event.target.value) || 20, 5, 100);
+      state.settings.dailyNew = Math.max(1, Math.floor(Number(event.target.value) || 20));
       await put("meta", { key: "settings", value: state.settings });
-      showToast("每日新词上限已保存");
+      showToast(`每日词量已设为 ${state.settings.dailyNew}`);
+    }
+    if (event.target.matches('[data-role="session-size"]')) {
+      state.settings.sessionSize = Math.max(1, Math.floor(Number(event.target.value) || 30));
+      await put("meta", { key: "settings", value: state.settings });
+      showToast(`专项每轮已设为 ${state.settings.sessionSize}`);
     }
   });
 
   window.addEventListener("keydown", (event) => {
     const session = state.session;
     if (event.key === "Escape") {
-      if (state.detailId) {
+      if (state.adventureOpen) {
+        state.adventureOpen = false;
+        state.adventureFinished = null;
+        render();
+      } else if (state.detailId) {
         state.detailId = null;
         render();
       } else if (session) closeSession(false);
@@ -982,9 +1403,11 @@
       return;
     }
     const question = session.questions[session.index];
-    if (!session.answered && !question.typed && /^[1-4]$/.test(event.key)) {
+    if (!session.answered && !question.typed && /^[1-6]$/.test(event.key)) {
       const option = question.options[Number(event.key) - 1];
       if (option) submitAnswer(option);
+    } else if (!session.answered && !question.typed && event.key === "0") {
+      submitAnswer("__UNKNOWN__");
     }
   });
 
@@ -995,6 +1418,8 @@
     }
     try {
       await loadState();
+      const requestedPage = new URLSearchParams(location.search || "").get("page");
+      if (["today", "adventure", "library", "weak", "data"].includes(requestedPage)) state.page = requestedPage;
       render();
       if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
         const register = () => navigator.serviceWorker.register("./sw.js").catch(() => {});
@@ -1006,6 +1431,19 @@
       root.innerHTML = '<div class="empty-state">本地数据初始化失败，请刷新后重试</div>';
     }
   }
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    installPrompt = event;
+    state.installAvailable = true;
+    if (state.ready) render();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    installPrompt = null;
+    state.installAvailable = false;
+    if (state.ready) render();
+  });
 
   boot();
 })();

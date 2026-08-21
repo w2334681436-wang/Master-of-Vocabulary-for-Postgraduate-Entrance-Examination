@@ -1,10 +1,11 @@
-const CACHE = "cizhan-static-v1";
+const CACHE = "cizhan-static-v2";
 const CORE = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./data/words.js",
+  "./data/adventure.js",
   "./manifest.webmanifest",
   "./icons/icon-64.png",
   "./icons/icon-192.png",
