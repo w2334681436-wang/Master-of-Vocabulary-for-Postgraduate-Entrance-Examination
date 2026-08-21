@@ -1,4 +1,4 @@
-const CACHE = "cizhan-static-v7";
+const CACHE = "cizhan-static-v8";
 const CORE = [
   "./",
   "./index.html",
@@ -43,16 +43,14 @@ self.addEventListener("fetch", (event) => {
   }
   if (requestUrl.origin !== self.location.origin) return;
   event.respondWith(
-    caches.match(event.request).then(
-      (cached) =>
-        cached ||
-        fetch(event.request).then((response) => {
-          if (response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE).then((cache) => cache.put(event.request, copy));
-          }
-          return response;
-        }),
-    ),
+    fetch(event.request)
+      .then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request)),
   );
 });

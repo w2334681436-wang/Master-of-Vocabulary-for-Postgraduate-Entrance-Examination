@@ -871,17 +871,26 @@
       { label: "今日新词", meta: `${introducedToday} / ${state.settings.dailyNew} 词`, done: todayRemaining === 0 },
       { label: "错词回查", meta: "答错后自动插回本轮，不用另开任务", done: mainlineDone },
     ];
-    const resumableSession = state.mainlineSession && !state.mainlineSession.finished
+    const resumableMainline = state.mainlineSession && !state.mainlineSession.finished
       ? state.mainlineSession
-      : state.pausedSession;
-    const pausedRemaining = resumableSession
-      ? Math.max(1, resumableSession.questions.length - resumableSession.index)
+      : null;
+    const pausedSideSession = state.pausedSession && !state.pausedSession.finished && !isMainlineSession(state.pausedSession)
+      ? state.pausedSession
+      : null;
+    const mainlineQueueRemaining = resumableMainline
+      ? Math.max(1, resumableMainline.questions.length - resumableMainline.index)
       : 0;
-    const action = resumableSession
-      ? { action: "resume-session", mode: resumableSession.mode, label: `${isMainlineSession(resumableSession) ? "继续每日主线" : "继续上次学习"} · 剩 ${pausedRemaining} 题` }
-      : mainlineDone
-        ? { action: "start-session", mode: "today", label: "今日主线完成 · 继续加练" }
-        : { action: "start-session", mode: "daily-core", label: `一键开始今日主线 · ${coreCount} 词` };
+    const sideQueueRemaining = pausedSideSession
+      ? Math.max(1, pausedSideSession.questions.length - pausedSideSession.index)
+      : 0;
+    const action = resumableMainline
+      ? { action: "resume-session", mode: resumableMainline.mode, label: `继续每日主线 · 剩 ${mainlineQueueRemaining} 题` }
+      : !mainlineDone
+        ? { action: "start-session", mode: "daily-core", label: `继续每日主线 · 剩 ${coreCount} 词` }
+        : { action: "start-session", mode: "today", label: "今日主线完成 · 继续加练" };
+    const sideResumeAction = pausedSideSession
+      ? `<button class="ghost-button" data-action="resume-session" data-mode="${escapeHtml(pausedSideSession.mode)}">继续${escapeHtml(sessionTitle(pausedSideSession.mode))} · ${sideQueueRemaining} 题</button>`
+      : "";
     return `<section class="page today-page">
       ${pageHeader("今日主线", mainlineDone ? "每日单词已完成" : "每日单词", `复习与新词合并学习，目标不是上限`)}
       <div class="today-flow-grid">
@@ -893,7 +902,7 @@
         </article>
         <div class="daily-side">
           <article class="card daily-overview-card"><div class="section-kicker">今日进度</div><div class="daily-numbers"><div><strong>${state.settings.dailyNew}</strong><span>今日目标</span></div><div><strong>${introducedToday}</strong><span>已学新词</span></div><div><strong>${todayStudied}</strong><span>已接触词</span></div><div><strong>${due}</strong><span>待复习</span></div></div></article>
-          <article class="card mastery-card"><div><span>自由加练</span><strong>${remaining}</strong><small>个词仍待真正掌握</small></div><div class="hero-progress"><div class="progress-track"><div class="progress-fill" style="width:${masteredPercent.toFixed(2)}%"></div></div><div class="progress-meta"><span>已掌握 ${counts.mastered}</span><span>${masteredPercent.toFixed(1)}%</span></div></div><div class="optional-actions"><button class="ghost-button" data-action="start-session" data-mode="weak">弱点 ${weak}</button><button class="ghost-button" data-action="start-session" data-mode="daily-exam">今日验收</button></div></article>
+          <article class="card mastery-card"><div><span>自由加练</span><strong>${remaining}</strong><small>个词仍待真正掌握</small></div><div class="hero-progress"><div class="progress-track"><div class="progress-fill" style="width:${masteredPercent.toFixed(2)}%"></div></div><div class="progress-meta"><span>已掌握 ${counts.mastered}</span><span>${masteredPercent.toFixed(1)}%</span></div></div><div class="optional-actions">${sideResumeAction}<button class="ghost-button" data-action="start-session" data-mode="weak">弱点 ${weak}</button><button class="ghost-button" data-action="start-session" data-mode="daily-exam">今日验收</button></div></article>
         </div>
         <article class="card status-strip">
           <div class="status-cell"><strong>${counts.new}</strong><span>完全不会</span></div>
@@ -1400,7 +1409,18 @@
       if (["today", "library", "weak", "data"].includes(requestedPage)) state.page = requestedPage;
       render();
       if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-        const register = () => navigator.serviceWorker.register("./sw.js").catch(() => {});
+        const register = () => {
+          const hadController = Boolean(navigator.serviceWorker.controller);
+          let reloading = false;
+          navigator.serviceWorker.addEventListener("controllerchange", () => {
+            if (!hadController || reloading) return;
+            reloading = true;
+            location.reload();
+          });
+          navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
+            .then((registration) => registration.update())
+            .catch(() => {});
+        };
         if (document.readyState === "complete") register();
         else window.addEventListener("load", register, { once: true });
       }
